@@ -4,6 +4,8 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
+
         {
             "name": "Test2",
             "type": "debugpy",
@@ -13,12 +15,28 @@
             "args": ""
         },
         {
-            "name": "GeneanetScrapping",
+            "name": "Translate",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "translate.py",
+            "console": "integratedTerminal",
+            "args": ""
+        },
+        {
+            "name": "GeneanetScrapping (en)",
             "type": "debugpy",
             "request": "launch",
             "program": "GeneanetScrapping.py",
             "console": "integratedTerminal",
             "args": "-v 'https://gw.geneanet.org/lipari?lang=en&pz=alexia&nz=henry&p=gabrielle+denise+josephine&n=bessey' -g gedcom.ged"
+        },
+        {
+            "name": "GeneanetScrapping (fr)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "GeneanetScrapping.py",
+            "console": "integratedTerminal",
+            "args": "-v 'https://gw.geneanet.org/lipari?lang=fr&pz=alexia&nz=henry&p=gabrielle+denise+josephine&n=bessey' -g gedcom.ged"
         }
     ]
 }
