@@ -46,7 +46,92 @@ LOG = logging.getLogger("GeneanetForGramps")
 handler = logging.FileHandler('info.log')
 LOG.addHandler(handler)
 
+#-------------------------------------------------------------------------
+#
+# Global variables
+#
+#-------------------------------------------------------------------------
+
+####db = None
+gname = None
+
+verbosity = 0
+force = False
+ascendants = False
+descendants = False
+spouses = False
+LEVEL = 2
+
+ROOTURL = 'https://gw.geneanet.org/'
+
+PROFIL = None
+##progress = None
+
 TIMEOUT = 5
+
+#-------------------------------------------------------------------------
+#
+# Rich console
+#
+#-------------------------------------------------------------------------
+# https://rich.readthedocs.io/en/stable/
+# pip3 install rich
+
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.text import Text
+from rich.pretty import pprint
+from rich.table import Table
+from rich.prompt import Prompt
+from rich.traceback import install
+from rich.pretty import Pretty
+
+console = Console()
+
+HEADER1 = 1
+HEADER2 = 2
+HEADER3 = 3
+
+NL = '\n'
+
+def display( what=None, title=None, level=0, verbose=0, error=False, exception=False ):
+    """
+    My function to display various type of objects
+    """
+
+    global verbosity
+
+    try:
+        if isinstance( what, list ):
+            pprint( what )
+
+        elif isinstance( what, dict ):
+
+            console.print( Panel( Pretty(what), title=title, title_align='left' ) )
+                
+        elif isinstance( what, str ):
+            if exception:
+                console.print_exception(show_locals=False, max_frames=1)
+
+            elif error:
+                if verbose <= verbosity:
+                    console.print( Text( what, style="white on red" ), NL)
+
+            elif level == 1:
+                console.print( Panel( Text(what.upper(), style="white"), style="white on cyan" ), NL)
+
+            elif level > 1:
+                console.print( Panel( Text(what), style="cyan" ), NL)
+
+            elif verbose <= verbosity:
+                console.print( Text(what) )
+
+        elif what:
+            pprint( what )
+
+    except:
+        console.print_exception(show_locals=False, max_frames=1)
 
 #-------------------------------------------------------------------------
 #
@@ -76,27 +161,6 @@ _ = translation.gettext
 #-------------------------------------------------------------------------
 
 import gedcom
-
-#-------------------------------------------------------------------------
-#
-# Global variables
-#
-#-------------------------------------------------------------------------
-
-####db = None
-gname = None
-
-verbosity = 0
-force = False
-ascendants = False
-descendants = False
-spouses = False
-LEVEL = 2
-
-ROOTURL = 'https://gw.geneanet.org/'
-
-PROFIL = None
-##progress = None
 
 #-------------------------------------------------------------------------
 #
@@ -627,7 +691,7 @@ class GFamily(GBase):
         f = None
         ids = db.get_family_gramps_ids()
         for i in ids:
-            f = db.get_family_from_gedcom_id(i)
+            f = db.get_family_from_gid(i)
             if verbosity >= 3:
                 print(_("Analysing Gramps Family ")+f.gramps_id)
             # Do these people already form a family
@@ -724,7 +788,7 @@ class GFamily(GBase):
 
         found = None
         try:
-            found = db.get_family_from_gedcom_id(gid)
+            found = db.get_family_from_gid(gid)
             self.gid = gid
             self.family = found
             if verbosity >= 2:
@@ -778,7 +842,7 @@ class GFamily(GBase):
                 db.add_family(self.family, tran)
 
             try:
-                grampsp0 = db.get_person_from_gedcom_id(self.father.gid)
+                grampsp0 = db.get_person_from_gid(self.father.gid)
             except:
                 if verbosity >= 2:
                     print(_("No father for this family"))
@@ -796,7 +860,7 @@ class GFamily(GBase):
                 db.commit_person(grampsp0, tran)
 
             try:
-                grampsp1 = db.get_person_from_gedcom_id(self.mother.gid)
+                grampsp1 = db.get_person_from_gid(self.mother.gid)
             except:
                 if verbosity >= 2:
                     print(_("No mother for this family"))
@@ -923,24 +987,27 @@ class GFamily(GBase):
                     print(_("Stopping exploration for family ")+self.father.firstname+" "+self.father.lastname+' - '+self.mother.firstname+" "+self.mother.lastname+_(" as we reached level ")+str(level))
         return
 
-#-------------------------------------------------------------------------
+#----------------------------------------------------------------------------------------------------------------------------------
 #
 # GPerson class
 #
-#-------------------------------------------------------------------------
+#----------------------------------------------------------------------------------------------------------------------------------
 
 class GPerson(GBase):
     '''
-    Generic Person common between Gramps and Geneanet
+    Generic Person common between GEDCOM and Geneanet
     '''
     def __init__(self,level):
         if verbosity >= 3:
             print(_("Initialize Person at level %d")%(level))
+
         # Counter
         self.level = level
+
         # GEDCOM
-        self.gedcom_id = None
-        self.gedcom_individual = None
+        self.gid = None
+        self.gedcomp = None
+
         # Father and Mother and Spouses GPersons
         self.father = None
         self.mother = None
@@ -951,19 +1018,18 @@ class GPerson(GBase):
 
         # Geneanet
         self.url = ""
-        self.html = ""
+        #self.html = ""
         self.ref = ""
-        self.firstname = ""
-        self.lastname = ""
-        self.sex = 'U'
-        self.birthdate = None
-        self.birthplace = None
-        ##self.birthplacecode = None
-        self.deathdate = None
-        self.deathplace = None
-        ##self.deathplacecode = None
-        ##self.parents = []
-        ##self.spouses = []
+
+        self.g_firstname = ""
+        self.g_lastname = ""
+        self.g_sex = 'U'
+        self.g_birthdate = None
+        self.g_birthplace = None
+        ##self.g_birthplacecode = None
+        self.g_deathdate = None
+        self.g_deathplace = None
+        ##self.g_deathplacecode = None
 
         self.fatherref = ""
         self.motherref = ""
@@ -978,7 +1044,7 @@ class GPerson(GBase):
         self.password = "twenty" #storage and privacy issues
 
     # -------------------------------------------------------------------------
-    # smartcopy: copy Geneanet to Gramps
+    # smartcopy: copy Geneanet to GEDCOM
     # -------------------------------------------------------------------------
     def smartcopy(self):
         '''
@@ -997,7 +1063,7 @@ class GPerson(GBase):
         self._smartcopy("deathplacecode")
 
     # -------------------------------------------------------------------------
-    # from_geneanet: parse Geneanet
+    # from_geneanet
     # -------------------------------------------------------------------------
 
     def from_geneanet(self, purl):
@@ -1010,7 +1076,6 @@ class GPerson(GBase):
         '''
         
         # Needed as Geneanet returned relative links
-
         # https://edmundmartin.com
         from random import choice
  
@@ -1030,41 +1095,31 @@ class GPerson(GBase):
  
         headers = random_headers()
 
-        if verbosity >= 3:
-            print(_("Purl:"),purl)
+        display(_("Purl: %s")%(purl), verbose=2)
+
         if not purl:
             return()
 
-        if verbosity >= 1:
-            print("######################################################################################################################")
-            print(_("Page considered:"), purl)
+        display(_("GPerson::from_geneanet - page considered: %s")%(purl), level=2, verbose=1 )
 
         import requests 
         s = requests.session()
         s.auth = (self.user, self.password)
         header = s.head(purl)
-        LOG.info('header %s' % header)
+
         page = s.get(purl)
         if page.status_code == "302":
-            LOG.debug('Need to log in?')
-            self.connexion(self.user, self.password)
-        LOG.info('content %s' % str(page.content))
-        LOG.info('text %s' % page.text)
-        LOG.info('type %s' % page.headers['Content-Type'])
-        LOG.debug('body %s'% page.request.body)
-        if verbosity >= 3:
-            print(_("Return code:"), page.status_code)
-        LOG.debug("How to handle HTML page on non linux environments?")
-        print(_("[Requests]: We failed to reach the server at"), purl)
-        LOG.info("Fallback, try via built-in urllib module")
+            self.connexion_geneanet(self.user, self.password)
+
+        display( _("Return code: %s")%(page.status_code), error=True, verbose=3)
+
+        display( _("[Requests]: We failed to reach the server at %s")%(purl), error=True)
 
         if page.ok and page.status_code != "200" or "201":
             try:
                 tree = html.fromstring(str(page.content))
-                LOG.info(str(page.content))
             except XMLSyntaxError:
-                LOG.debug(_("Unable to perform HTML analysis"))
-                # os.system('''wget "%(url)s"''' % {'url': purl})
+                pass
             import urllib.request, ssl
             try:
                 ctx = ssl.create_default_context()
@@ -1074,11 +1129,9 @@ class GPerson(GBase):
             except urllib.error.HTTPError:
                 LOG.debug(purl)
             tree = html.fromstring(page.read())
-            LOG.info(str(page))
 
             self.url = purl
             self.title = tree.xpath('//title/text()')
-            LOG.debug((purl, self.title))
             # Wait after a Genanet request to be fair with the site
             # between 2 and 7 seconds
             time.sleep(random.randint(2,7))
@@ -1088,19 +1141,20 @@ class GPerson(GBase):
             # -----------------------------------------------------------------
             pu = urllib.parse.urlparse(purl)
             self.ref = pu.path[1:] + "?" + pu.query
+            display("Référence: %s"%(self.ref), verbose=1)
 
             # -----------------------------------------------------------------
             # firstname & lastname
             # -----------------------------------------------------------------
             try:
                 names = tree.xpath('//div[@id="perso"]//a/text()')
-                self.firstname = str(names[0]).title()
-                self.lastname = str(names[1]).title()
+                self.g_firstname = str(names[0]).title()
+                self.g_lastname = str(names[1]).title()
             except:
-                LOG.debug(names)
-            if verbosity >= 1:
-                print("Niveau: %d"%(self.level))
-                print("Nom: %s %s"%(self.firstname,self.lastname))
+                pass
+
+            display("Niveau: %d"%(self.level), verbose=1)
+            display("Nom: %s %s"%(self.g_firstname,self.g_lastname), verbose=1)
 
             # -----------------------------------------------------------------
             # sex
@@ -1108,15 +1162,14 @@ class GPerson(GBase):
             try:
                 # Should return M or F
                 sex = tree.xpath('//div[@id="person-title"]//img/attribute::alt')
-                self.sex = sex[0]
+                self.g_sex = sex[0]
                 # Seems we have a french codification on the site
                 if sex[0] == 'H':
-                    self.sex = 'M'
+                    self.g_sex = 'M'
             except:
-                LOG.debug(self.sex)
                 self.sex = 'U'
-            if verbosity >= 1:
-                print("Sexe: %s"%(self.sex))
+
+            display("Sexe: %s"%(self.g_sex), verbose=1)
 
             # -----------------------------------------------------------------
             # birth
@@ -1126,29 +1179,27 @@ class GPerson(GBase):
                 birth = tree.xpath(bstring)
             except:
                 birth = [""]
-            if verbosity >= 2:
-                print("==> birth: %s"%(birth))
+
+            display("==> birth: %s"%(birth), verbose=2)
 
             try:
                 ld = convert_date(birth[0].split('-')[0].split()[1:])
-                self.birthdate = format_ca(ld)
-                if verbosity >= 1:
-                    print("Date de naissance: %s"%(self.birthdate))
+                self.g_birthdate = format_ca(ld)
+
+                display("Date de naissance: %s"%(self.g_birthdate), verbose=1)
             except:
-                LOG.debug('birth %s' % birth)
                 self.birthdate = None
                 
             try:
                 bp = str(birth[0].split(' - ')[1])
-                self.birthplace = bp.partition("à l'âge")[0]
-                if verbosity >= 1:
-                    print("Lieu de naissance: %s"%(self.birthplace))
+                self.g_birthplace = bp.partition("à l'âge")[0]
+
+                display("Lieu de naissance: %s"%(self.g_birthplace), verbose=1)
             except:
                 if len(birth) < 1:
                     pass
                 else:
-                    LOG.debug(str(birth[0]))
-                    self.birthplace = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
+                    self.g_birthplace = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
 
             # -----------------------------------------------------------------
             # death
@@ -1158,29 +1209,27 @@ class GPerson(GBase):
                 death = tree.xpath(dstring)
             except:
                 death = [""]
-            if verbosity >= 2:
-                print("==> death: %s"%(death))
+
+            display("==> death: %s"%(death), verbose=2)
 
             try:
                 ld = convert_date(death[0].split('-')[0].split()[1:])
-                self.deathdate = format_ca(ld)
-                if verbosity >= 1:
-                    print("Date de décès: %s"%(self.deathdate))
+                self.g_deathdate = format_ca(ld)
+
+                display("Date de décès: %s"%(self.g_deathdate), verbose=1)
             except:
-                LOG.debug('death %s' % death)
-                self.deathdate = None
+                self.g_deathdate = None
 
             try:
                 dp = str(death[0].split(' - ')[1])
-                self.deathplace = dp.partition("à l'âge")[0]
-                if verbosity >= 1:
-                    print("Lieu de décès: %s"%(self.deathplace))
+                self.g_deathplace = dp.partition("à l'âge")[0]
+
+                display("Lieu de décès: %s"%(self.g_deathplace), verbose=1)
             except:
                 if len(death) < 1:
                     pass
                 else:
-                    LOG.debug(str(death[0]))
-                    self.deathplace = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
+                    self.g_deathplace = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
 
             # -----------------------------------------------------------------
             # parents
@@ -1190,11 +1239,10 @@ class GPerson(GBase):
                 # parents = tree.xpath('//ul[not(descendant-or-self::*[@class="fiche_union"])]//li[@style="vertical-align:middle;list-style-type:disc" or @style="vertical-align:middle;list-style-type:circle"]//a/attribute::href')
                 parents = tree.xpath('//ul[not(descendant-or-self::*[@class="fiche_union"])]//li[@style="vertical-align:middle;list-style-type:disc" or @style="vertical-align:middle;list-style-type:circle"]')
                 parents = tree.xpath('//ul[not(@class="fiche_union")]//li[@style="vertical-align:middle;list-style-type:disc" or @style="vertical-align:middle;list-style-type:circle"]')
-                if verbosity >= 2:
-                    print("==> parents: %s"%(parents) )
+
+                display("---------------------------", verbose=1)
 
             except:
-                LOG.debug(str(tree.xpath('//ul[not(descendant-or-self::*[@class="fiche_union"])]//')))
                 parents = []
 
             self.fref = ""
@@ -1202,45 +1250,33 @@ class GPerson(GBase):
             prefl = []
 
             for p in parents:
-                LOG.info(etree.tostring(p, method='xml', pretty_print=True))
-                if verbosity >= 1:
-                    print('==> parent text', p.xpath('text()'))
-                LOG.info(p.text)
+                display('==> parent text', p.xpath('text()'), verbose=2)
 
                 for a in p.xpath('a'):
                     pref = a.xpath('attribute::href')[0]
 
-                    if verbosity >= 1:
-                        print("Référence du parent:", pref)
-
-                    LOG.debug(pref)
+                    display("Référence du parent: %s"%(pref), verbose=1)
 
                     try:
                         pname = a.xpath('text()')[0].title()
-                        LOG.info(pname)
                     except:
                         pname = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
-                        LOG.debug(pname)
                         # if pname is ? ? then go to next one
 
-                    if verbosity >= 1:
-                        print("Nom du parent: %s"%(pname))
+                    display("Nom du parent: %s"%(pname), verbose=1)
 
                 else:
-                    LOG.info(etree.tostring(p, method='html', pretty_print=False))
-                    #LOG.debug('Failed to set parents %s' % p.text)
+                    pass
                 prefl.append(str(pref))
 
             try:
                 self.fref = prefl[0]
             except:
-                LOG.debug('no ref for parent 1')
                 self.fref = ""
 
             try:
                 self.mref = prefl[1]
             except:
-                LOG.debug('no ref for parent 2')
                 self.mref = ""
 
             # -----------------------------------------------------------------
@@ -1248,8 +1284,9 @@ class GPerson(GBase):
             # -----------------------------------------------------------------
             try:
                 spouses = tree.xpath('//ul[@class="fiche_union"]/li')
-                if verbosity >= 2:
-                    print("==> spouses: %s"%(spouses) )
+                
+                display("==> spouses: %s"%(spouses), verbose=2 )
+
             except:
                 LOG.debug(str(tree.xpath('//ul[@class="fiche_union"]/li')))
                 spouses = []
@@ -1260,31 +1297,29 @@ class GPerson(GBase):
             marriage = []
 
             for spouse in spouses:
-                if verbosity >= 1:
-                    print("---------------------------")
+                display("---------------------------", verbose=1)
+
                 # -------------------------------------------------------------
                 # spouse
                 # -------------------------------------------------------------
                 for a in spouse.xpath('a'):
                     try:
                         ref = a.xpath('attribute::href')[0]
-                        if verbosity >= 1:
-                            print("Conjoint %d ref: %s"%(s, ref))
+
+                        display("Conjoint %d ref: %s"%(s, ref), verbose=1)
                     except:
                         ref = None
-                        LOG.debug(str(a.xpath('attribute::href')))
 
                     try:
                         sname.append(str(a.xpath('text()')[0]).title())
-                        if verbosity >= 1:
-                            print("Nom du conjoint:", sname[s])
+
+                        display("Nom du conjoint: %s"%(sname[s]), verbose=1)
                     except:
                         sname.append("")
 
                     try:
                         sref.append(str(a.xpath('attribute::href')[0]))
-                        if verbosity >= 1:
-                            print("Référence du conjoint:", purl+sref[s])
+                        display("Référence du conjoint: %s"%(purl+sref[s]), verbose=1)
                     except:
                         sref.append("")
 
@@ -1303,16 +1338,16 @@ class GPerson(GBase):
                     
                 try:
                     ld = convert_date(marriage[s].split(',')[0].split()[1:])
-                    if verbosity >= 1:
-                        print(_("Married:"), ld)
                     self.marriagedate.append(format_ca(ld))
+
+                    display("Date du marriage: %s"%(ld), verbose=1)
                 except:
                     self.marriagedate.append(None)
 
                 try:
                     self.marriageplace.append(str(marriage[0].split(',')[1][1:]).title())
-                    if verbosity >= 1:
-                        print(_("Married place:"), self.marriageplace[0])
+                    
+                    display("Lieu du marriage:"%(self.marriageplace[0]), verbose=1)
                 except:
                     self.marriageplace.append(str(marriage[0]))
 
@@ -1326,26 +1361,20 @@ class GPerson(GBase):
                 cnum = 0
                 clist = []
                 for c in spouse.xpath('ul/li/a[1]'):
-                    if verbosity >= 1:
-                        print("-------------")
+                    display("-------------", verbose=1)
 
                     try:
                         cref = c.xpath('attribute::href')[0]
-                        if verbosity >= 1:
-                            print("Enfant %d ref: %s"%(cnum, cref))
+
+                        display("Enfant %d ref: %s"%(cnum, cref), verbose=1)
                     except:
                         cref = None
-                        LOG.debug(str(a.xpath('attribute::href')))
 
                     try:
                         cname = c.xpath('text()')[0].title()
-                        if verbosity >= 1:
-                            print(_("Nom de l'enfant: %s")%(cname))
+                        display("Nom de l'enfant: %s"%(cname), verbose=1)
                     except:
-                        cname = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
-                        LOG.debug(cname)
-
-                    LOG.info(etree.tostring(c, method='xml', pretty_print=True))
+                        pass
 
                     clist.append(cref)
                     cnum = cnum + 1
@@ -1354,108 +1383,65 @@ class GPerson(GBase):
 
                 s = s + 1
                 # End spouse loop
-                LOG.info('clist %s' % clist)
 
-            if verbosity >= 1:
-                print("-----------------------------------------------------------")
+            display("-----------------------------------------------------------", verbose=1)
 
         else:
-            print(_("We failed to be ok with the server"))
+            display("We failed to be ok with the server", error=True)
      
     # -------------------------------------------------------------------------
-    # connexion: Geneanet connexion
+    # create_gedcom
     # -------------------------------------------------------------------------
-    def connexion(self, user, password):
+    def create_gedcom(self):
         '''
-        Login and password set for geneanet servers
+        Create a Person in GEDCOM and return it
         '''
-        import requests
 
-        headers = {'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36' }
-        r = requests.get("https://www.geneanet.org/connexion/"
-             ,headers=headers
-            )
-        
-        pos1 = r.text.find('name="_csrf_token" value="')
-        pos1 = pos1 + len('name="_csrf_token" value="')
-        pos2 = r.text.find('"', pos1)
-        csrf = r.text[pos1:pos2]
-        cooks = r.cookies
-        headers.update({'referer':'https://www.geneanet.org/connexion/'})
-        headers.update({'authority':'www.geneanet.org'})
-        r = requests.post(
-                 "https://www.geneanet.org/connexion/login_check"
-                ,data={
-                      "_username": user
-                     ,"_password": password
-                     ,"_submit": ""
-                     ,"_remember_me": "1"
-                     ,"_csrf_token": csrf
-                     }
-               ,allow_redirects=False
-               ,cookies=cooks
-               ,headers=headers
-             )
-        LOG.info(r.text)
-
-    # -------------------------------------------------------------------------
-    # create_person: 
-    # -------------------------------------------------------------------------
-    def create_person(self):
-        '''
-        Create a Person and return it
-        '''
+        display(_("GPerson::create_gedcom"), level=2, verbose=1 )
 
         individual = gedcom.individual()
-        individual.set_source( self.url )
+        individual.set_source( self.ref )
 
-        self.gedcom_individual = individual
-        self.gedcom_id = individual.id
+        self.gedcomp = individual
+        self.gid = individual.id
         if verbosity >= 1:
-            print(_("Create new GEDCOM Person: ")+self.gedcom_id+' ('+self.gedcom_individual.source+')')
+            print(_("Create new GEDCOM Person: ")+self.gid+' ('+self.gedcomp.source+')')
 
     # -------------------------------------------------------------------------
-    # find_person: find person from GEDCOM data
+    # find_gedcom
     # -------------------------------------------------------------------------
-    def find_person(self):
+    def find_gedcom(self):
         '''
-        Find a Person and return it
+        Find a Person from GEDCOM and return it
         The parameter precises the relationship with our person
         '''
-        person = gedcom.individuals()
+        display(_("GPerson::find_gedcom"), level=2, verbose=1 )
 
-        # for p in gedcom.individuals:
-        #     if p. != self.url:
-        #         continue
         p = None
-        ids = db.get_person_gramps_ids()
-        for i in ids:
-            if verbosity >= 3:
-                print(_("DEBUG: Looking after ")+i)
-            p = db.get_person_from_gedcom_id(i)
-            try:
-                name = p.primary_name.get_name().split(', ')
-            except:
+        for ind in gedcom.individuals:
+            pprint(ind)
+            if ind.source != self.url:
                 continue
-            if len(name) == 0:
-                continue
-            elif len(name) == 1:
-                name.append(None)
-            if name[0]:
-                lastname = name[0]
             else:
-                lastname = ""
-            if name[1]:
-                firstname = name[1]
-            else:
-                firstname = ""
+                p = ind
+
+        if p:
+            # person found in GEDCOM
+
             # Assumption it's the right one
-            self.grampsp = p
-            bd = self.get_gramps_date(EventType.BIRTH)
-            # Remove empty month/day if needed to compare below with just a year potentially
+            self.gedcomp = p
+
+            try:
+                firstname, lastname = self.gedcomp.name
+            except:
+                pass
+
+            bd = self.gedcomp.birth
             bd = format_year(bd)
-            dd = self.get_gramps_date(EventType.DEATH)
+
+            dd = self.gedcomp.death
             dd = format_year(dd)
+
             if verbosity >= 3:
                 print(_("DEBUG: firstname: ")+firstname+_(" vs g_firstname: ")+self.g_firstname)
                 print(_("DEBUG: lastname: ")+lastname+_(" vs g_lastname: ")+self.g_lastname)
@@ -1477,24 +1463,23 @@ class GPerson(GBase):
                     g_pdd = self.g_deathdate
                 print(_("DEBUG: bd: ")+pbd+_(" vs g_bd: ")+g_pbd)
                 print(_("DEBUG: dd: ")+pdd+_(" vs g_dd: ")+g_pdd)
+
             if firstname != self.g_firstname or lastname != self.g_lastname:
                 # it's not the right person finally
-                self.grampsp = None
-                continue
+                self.gedcomp = None
+                return
+
             if not bd and not dd and not self.g_birthdate and not self.g_deathdate:
                 # we skip a person for which we have no date at all
                 # this may create duplicates, but is the best apparoach
-                self.grampsp = None
-                continue
+                self.gedcomp = None
+                return
+                
             if bd == self.g_birthdate or dd == self.g_deathdate:
-                self.gid = p.gramps_id
+                self.gid = p.gid
+
                 if verbosity >= 2:
-                    print(_("Found a Gramps Person: ")+self.g_firstname+' '+self.g_lastname+ " ("+self.gid+")")
-                # Found it we can exit
-                break
-            else:
-                # still not found
-                self.grampsp = None
+                    print(_("Found a GEDCOM Person: ")+self.g_firstname+' '+self.g_lastname+ " ("+self.gid+")")
 
     # -------------------------------------------------------------------------
     # to_gedcom
@@ -1503,86 +1488,30 @@ class GPerson(GBase):
         '''
         Push into GEDCOM the GPerson
         '''
+        display(_("GPerson::to_gedcom"), level=2, verbose=1 )
 
-        return 
+        # def smartcopy( tag, level, value ):
+        #     try:
+        #         node = self.gedcomp[tag]
+        #         node.value = value
+        #     except IndexError:
+        #         self.gedcomp.add_child_element(gedcom.element(tag, level=level, value=value))
 
-        def smartcopy( tag, level, value ):
-            try:
-                node = self.gedcom_individual[tag]
-                node.value = value
-            except IndexError:
-                self.gedcom_individual.add_child_element(gedcom.element(tag, level=level, value=value))
+        self.gedcomp.add_child_element(gedcom.element('NAME', level=1, value=(self.g_firstname + " " + self.g_lastname)))
 
-        value = self.g_firstname + self.g_lastname
-        smartcopy( 'NAME', 1, value )
-
-        smartcopy( 'SEX', 1, self.g_sex )
+        self.gedcomp.add_child_element(gedcom.element('SEX', level=1, value=self.g_sex))
 
         bd = gedcom.element('BIRT', level=1, value="")
         bd.add_child_element(gedcom.element('DATE', level=1, value=self.g_birthdate))
         bd.add_child_element(gedcom.element('PLAC', level=1, value=self.g_birthplace))
-        self.gedcom_individual.add_child_element(bd)
 
-        elements = {}
-        elements += { "NAME": self.g_firstname + self.g_lastname}
-        elements += { "SEX": self.g_sex}
-        elements += { "BIRT": { "DATE": self.g_birthdate, "PLAC": self.g_birthplace }}
-        elements += { "DEAT": { "DATE": self.g_deathdate, "PLAC": self.g_deathplace }}
+        self.gedcomp.add_child_element(bd)
 
         dd = gedcom.element('DEAT', level=1, value="")
         dd.add_child_element(gedcom.element('DATE', level=1, value=self.g_deathdate))
         dd.add_child_element(gedcom.element('PLAC', level=1, value=self.g_deathplace))
-        self.gedcom_individual.add_child_element(dd)
 
-        return
-
-        with DbTxn("Geneanet import", db) as tran:
-            db.disable_signals()
-            grampsp = self.grampsp
-            if not grampsp:
-                if verbosity >= 2:
-                    print(_("ERROR: Unable sync unknown Gramps Person"))
-                return
-
-            if self.sex == 'M':
-                grampsp.set_gender(Person.MALE)
-            elif self.sex == 'F':
-                grampsp.set_gender(Person.FEMALE)
-            else:
-                grampsp.set_gender(Person.UNKNOWN)
-
-            n = Name()
-            n.set_type(NameType(NameType.BIRTH))
-            n.set_first_name(self.firstname)
-            s = n.get_primary_surname()
-            s.set_surname(self.lastname)
-            grampsp.set_primary_name(n)
-
-            # We need to create events for Birth and Death
-            for ev in ['birth', 'death']:
-                timelog = _('event from Geneanet')
-                self.get_or_create_event(grampsp, ev, tran, timelog)
-
-            # Store the importation place as an Internet note
-            if self.url != "":
-                found = False
-                for u in grampsp.get_url_list():
-                    if u.get_type() == UrlType.WEB_HOME \
-                    and u.get_path() == self.url:
-                        found = True
-                if not found:
-                    url = Url()
-                    try:
-                        url.set_description(str(self.title[0]))
-                    except:
-                        url.set_description(_("Geneanet"))
-                    url.set_type(UrlType.WEB_HOME)
-                    url.set_path(self.url)
-                    grampsp.add_url(url)
-
-            db.commit_person(grampsp, tran)
-            db.enable_signals()
-            db.request_rebuild()
+        self.gedcomp.add_child_element(dd)
 
     # -------------------------------------------------------------------------
     # from_gedcom
@@ -1597,36 +1526,44 @@ class GPerson(GBase):
             print(_("Calling from_gedcom with gid: %s")%(gid))
 
         # If our gid was already setup and we didn't pass one
-        if not gid and self.gedcom_id:
-            gid = self.gedcom_id
+        if not gid and self.gid:
+            gid = self.gid
 
         if verbosity >= 3:
             print(_("Now gid is: %s")%(gid))
 
         # parse gedcom.individuals to get the one with geneanet url
-        self.gedcom_individual = None
+        found = None
         for ind in gedcom.individuals:
             if ind.source != gid:
                 continue
-            self.gedcom_id = gid
-            self.gedcom_individual = ind
+            found = ind
+            self.gid = gid
+            self.gedcomp = found
 
-        if self.gedcom_individual:
-            if verbosity >= 2 and self.gedcom_id:
+        if found:
+            if verbosity >= 1 and self.gid:
                 print(_("Existing GEDCOM Person: %s")%(self.gid))
         else:
-            self.create_person()
+            if verbosity >= 1:
+                print(_("WARNING: Unable to retrieve id %s from the GEDCOM %s") %(gid, gname))
+            # If we don't know who this is, try to find it in Gramps
+            # This supposes that Geneanet data are already present in GPerson
+            self.find_gedcom()
+            # And if we haven't found it, create it in gramps
+            if self.gedcomp == None:
+                self.create_gedcom()
 
         try:
-            self.firstname, self.lastname = self.gedcom_individual.name
+            self.firstname, self.lastname = self.gedcomp.name
         except:
             self.firstname, self.lastname = ( None, None )
 
-        if verbosity >= 2:
-            print(_("===> GEDCOM Name of %s: %s %s")%(self.gedcom_id, self.firstname, self.lastname))
+        if verbosity >= 1:
+            print(_("===> GEDCOM Name of %s: %s %s")%(self.gid, self.firstname, self.lastname))
 
         try:
-            bd = self.gedcom_individual.birth
+            bd = self.gedcomp.birth
             if bd:
                 if verbosity >= 2:
                     print(_("Birth:"),bd)
@@ -1637,10 +1574,10 @@ class GPerson(GBase):
                     print(_("No Birth date"))
         except:
             if verbosity >= 1:
-                print(_("WARNING: Unable to retrieve birth date for id %s")%(self.gedcom_id))
+                print(_("WARNING: Unable to retrieve birth date for id %s")%(self.gid))
 
         try:
-            dd = self.gedcom_individual.death
+            dd = self.gedcomp.death
             if dd:
                 if verbosity >= 2:
                     print(_("Death:"),dd)
@@ -1651,7 +1588,7 @@ class GPerson(GBase):
                     print(_("No Death date"))
         except:
             if verbosity >= 1:
-                print(_("WARNING: Unable to retrieve death date for id %s")%(self.gedcom_id))
+                print(_("WARNING: Unable to retrieve death date for id %s")%(self.gid))
 
         # Deal with the parents now, as they necessarily exist
         self.father = GPerson(self.level+1)
@@ -1829,6 +1766,40 @@ class GPerson(GBase):
                     print(_("Stopping exploration as there are no more parents"))
         return
 
+    # -------------------------------------------------------------------------
+    # connexion_geneanet
+    # -------------------------------------------------------------------------
+    def connexion_geneanet(self, user, password):
+        '''
+        Login and password set for geneanet servers
+        '''
+        import requests
+
+        headers = {'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36' }
+        r = requests.get("https://www.geneanet.org/connexion/"
+             ,headers=headers
+            )
+        
+        pos1 = r.text.find('name="_csrf_token" value="')
+        pos1 = pos1 + len('name="_csrf_token" value="')
+        pos2 = r.text.find('"', pos1)
+        csrf = r.text[pos1:pos2]
+        cooks = r.cookies
+        headers.update({'referer':'https://www.geneanet.org/connexion/'})
+        headers.update({'authority':'www.geneanet.org'})
+        r = requests.post(
+                 "https://www.geneanet.org/connexion/login_check"
+                ,data={
+                      "_username": user
+                     ,"_password": password
+                     ,"_submit": ""
+                     ,"_remember_me": "1"
+                     ,"_csrf_token": csrf
+                     }
+               ,allow_redirects=False
+               ,cookies=cooks
+               ,headers=headers
+             )
 
 ###################################################################################################################################
 # geneanet_to_gedcom
@@ -1845,23 +1816,16 @@ def geneanet_to_gedcom(p, level, gid, url):
 
     p.from_geneanet(url)
 
-    import pprint
-    pprint.pprint(vars(p))
-
-    # Find this Person in GEDCOM
-    # p.find_gedcom(url)
-
-    # Filling the Person  from GEDCOM
+    # Filling the Person from GEDCOM
     # Done after so we can try to find it in Gramps with the Geneanet data
-    ##p.from_gedcom(p.url)
+    p.from_gedcom(gid)
 
     # Check we point to the same person
     gid = None
     if gid != None:
         if (p.firstname != p.g_firstname or p.lastname != p.g_lastname) and (not force):
-            # print(_("Gramps   person: %s %s")%(p.firstname,p.lastname))
+            print(_("GEDCOM person  : %s %s")%(p.firstname,p.lastname))
             print(_("Geneanet person: %s %s")%(p.g_firstname,p.g_lastname))
-            db.close()
             sys.exit(_("Do not continue without force"))
 
         # Fix potential empty dates
@@ -1877,12 +1841,14 @@ def geneanet_to_gedcom(p, level, gid, url):
         if p.birthdate == p.g_birthdate or p.deathdate == p.g_deathdate or force:
             pass
         else:
-            print(_("Gramps   person birth/death: %s / %s")%(p.birthdate,p.deathdate))
+            print(_("GEDCOM person birth/death  : %s / %s")%(p.birthdate,p.deathdate))
             print(_("Geneanet person birth/death: %s / %s")%(p.g_birthdate,p.g_deathdate))
             sys.exit(_("Do not continue without force"))
 
     # Copy from Geneanet into GEDCOM and commit
     p.to_gedcom()
+
+    display( vars(p), title="geneanet_to_gedcom - Person [ %s ] %s"%(p.gid, p.ref) )
 
     return(p)
 
@@ -1905,6 +1871,8 @@ def main():
     global locale
     global _
 
+    display( _("GeneanetScrapping"), level=1 )
+
     parser = argparse.ArgumentParser(description=_("Export Geneanet subtrees into GEDCOM file"))
     parser.add_argument("-v", "--verbosity", action="count", default=0, help=_("Increase verbosity"))
     parser.add_argument("-a", "--ascendants", default=False, action='store_true', help=_("Includes ascendants (off by default)"))
@@ -1917,8 +1885,6 @@ def main():
     args = parser.parse_args()
 
     if args.searchedperson == None:
-        #purl = 'https://gw.geneanet.org/agnesy?lang=fr&pz=hugo+mathis&nz=renard&p=marie+sebastienne&n=helgouach'
-        #purl = 'https://gw.geneanet.org/agnesy?lang=fr&n=queffelec&oc=17&p=marie+anne'
         print(_("Please provide a person to search for"))
         return -1
     else:
@@ -1943,7 +1909,7 @@ def main():
     LEVEL = args.level
 
     if gname == None:
-        print("Please provide a gedcom file name to write to")
+        print(_("Please provide a gedcom file name to write to"))
         sys.exit(-1)
 
     header_gedcom_text = """

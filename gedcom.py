@@ -2,6 +2,8 @@
 Library for reading and writing GEDCOM files.
 
 https://en.wikipedia.org/wiki/GEDCOM
+
+Source: https://github.com/amandasaurus/gedcompy/blob/master/gedcom/__init__.py
 """
 import re
 import numbers
