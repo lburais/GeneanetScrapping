@@ -639,6 +639,9 @@ class GFamily(GBase):
     Family as seen by Gramps and Geneanet
     '''
     def __init__(self,father,mother):
+
+        display(_("GFamily::__init__ - Creating family: %s %s - %s %s")%(father.firstname, father.lastname, mother.firstname, mother.lastname), level=2, verbose=1 )
+
         # The 2 GPersons parents in this family should exist
         # and properties filled before we create the family
         # Gramps properties
@@ -655,8 +658,6 @@ class GFamily(GBase):
         self.g_marriageplacecode = None
         self.g_childref = []
 
-        if verbosity >= 1:
-            print(_("Creating GFamily: ")+father.firstname+" "+father.lastname+" - "+mother.firstname+" "+mother.lastname)
         self.url = father.url
         if self.url == "":
             self.url = mother.url
@@ -671,6 +672,8 @@ class GFamily(GBase):
         '''
         Create a Family in Gramps and return it
         '''
+        display(_("GFamily::grampsf"), level=2, verbose=1 )
+
         with DbTxn("Geneanet import", db) as tran:
             grampsf = Family()
             db.add_family(grampsf, tran)
@@ -686,14 +689,13 @@ class GFamily(GBase):
         '''
         Find a Family in Gramps and return it
         '''
-        if verbosity >= 2:
-            print(_("Look for a Gramps Family"))
+        display(_("GFamily::find_grampsf - Look for a Gramps Family"), level=2, verbose=1 )
+
         f = None
         ids = db.get_family_gramps_ids()
         for i in ids:
             f = db.get_family_from_gid(i)
-            if verbosity >= 3:
-                print(_("Analysing Gramps Family ")+f.gramps_id)
+            display(_("Analysing Gramps Family ")+f.gramps_id, verbose=2)
             # Do these people already form a family
             father = None
             fh = f.get_father_handle()
@@ -713,7 +715,7 @@ class GFamily(GBase):
                 sfgid = self.father.gid
                 if not sfgid:
                     sfgid = "None"
-                print(_("Check father ids: ")+fgid+_(" vs ")+sfgid)
+                display(_("Check father ids: ")+fgid+_(" vs ")+sfgid, verbose=2)
                 if not mother:
                     mgid = None
                 else:
@@ -723,7 +725,7 @@ class GFamily(GBase):
                 smgid = self.mother.gid
                 if not smgid:
                     smgid = "None"
-                print(_("Check mother ids: ")+mgid+_(" vs ")+smgid)
+                display(_("Check mother ids: ")+mgid+_(" vs ")+smgid, verbose=2)
             if self.father and father and father.gramps_id == self.father.gid \
                 and self.mother and mother and mother.gramps_id == self.mother.gid:
                 return(f)
@@ -737,14 +739,14 @@ class GFamily(GBase):
         '''
         Initiate the GFamily from Geneanet data
         '''
+        display(_("GFamily::from_geneanet - Initiate the GFamily from Geneanet data"), level=2, verbose=1 )
+
         # Once we get the right spouses, then we can have the marriage info
         idx = 0
         for sr in self.father.spouseref:
-            if verbosity >= 3:
-                print(_("Comparing sr %s to %s (idx: %d)")%(sr,self.mother.url,idx))
+            display(_("Comparing sr %s to %s (idx: %d)")%(sr,self.mother.url,idx), verbose=2)
             if sr == self.mother.url:
-                if verbosity >= 2:
-                    print(_("Spouse %s found (idx: %d)")%(sr,idx))
+                display(_("Spouse %s found (idx: %d)")%(sr,idx), verbose=2)
                 break
             idx = idx + 1
 
@@ -755,55 +757,49 @@ class GFamily(GBase):
                 self.g_marriageplace = self.father.marriageplace[idx]
                 self.g_marriageplacecode = self.father.marriageplacecode[idx]
             except:
-                LOG.debug('marriage, father and spouse(%s)' % idx)
+                pass
+
             try:
                 for c in self.father.childref[idx]:
-                    LOG.info(c)
                     self.g_childref.append(c)
             except:
-                LOG.debug('child, father and spouse(%s)' % idx)
+                pass
             
 
         if self.g_marriagedate and self.g_marriageplace and self.g_marriageplacecode:
-            if verbosity >= 2:
-                print(_("Geneanet Marriage found the %s at %s (%s)")%(self.g_marriagedate,self.g_marriageplace,self.g_marriageplacecode))
+            display(_("Geneanet Marriage found the %s at %s (%s)")%(self.g_marriagedate,self.g_marriageplace,self.g_marriageplacecode), verbose=2)
 
 
     # -------------------------------------------------------------------------
-    # from_gedcom: initiate GFamily from Gramps
+    # from_gedcom: initiate GFamily from GEDCOM
     # -------------------------------------------------------------------------
     def from_gedcom(self,gid):
         '''
         Initiate the GFamily from GEDCOM data
         '''
-        if verbosity >= 2:
-            print(_("Calling from_gedcom with gid: %s")%(gid))
+        display(_("GFamily::from_gedcom - Calling from_gedcom with gid: %s")%(gid), level=2, verbose=1 )
 
         # If our gid was already setup and we didn't pass one
         if not gid and self.gid:
             gid = self.gid
 
-        if verbosity >= 2:
-            print(_("Now gid is: %s")%(gid))
+        display(_("Now gid is: %s")%(gid), verbose=2)
 
         found = None
         try:
             found = db.get_family_from_gid(gid)
             self.gid = gid
             self.family = found
-            if verbosity >= 2:
-                print(_("Existing gid of a Gramps Family: %s")%(self.gid))
+            display(_("Existing gid of a Gramps Family: %s")%(self.gid), verbose=2)
         except:
-            if verbosity >= 1:
-                print(_("WARNING: Unable to retrieve id %s from the gramps db %s")%(gid,gname))
+            display(_("WARNING: Unable to retrieve id %s from the gramps db %s")%(gid,gname), verbose=1)
 
         if not found:
             # If we don't know which family this is, try to find it in Gramps
             # This supposes that Geneanet data are already present in GFamily
             self.family = self.find_grampsf()
             if self.family:
-                if verbosity >= 2:
-                    print(_("Found an existing Gramps family ")+self.family.gramps_id)
+                display(_("Found an existing Gramps family ")+self.family.gramps_id, verbose=2)
                 self.gid = self.family.gramps_id
             # And if we haven't found it, create it in gramps
             if self.family == None:
@@ -825,7 +821,7 @@ class GFamily(GBase):
 
             if verbosity >= 2:
                 if self.marriagedate and self.marriageplace and self.marriageplacecode:
-                    print(_("Gramps Marriage found the %s at %s (%s)")%(self.marriagedate,self.marriageplace,self.marriageplacecode))
+                    display(_("Gramps Marriage found the %s at %s (%s)")%(self.marriagedate,self.marriageplace,self.marriageplacecode), verbose=2)
 
     # -------------------------------------------------------------------------
     # to_gedcom: copy GFamily from Geneanet to Gramps DB
@@ -833,6 +829,8 @@ class GFamily(GBase):
     def to_gedcom(self):
         '''
         '''
+        display(_("GFamily::to_gedcom"), level=2, verbose=1 )
+
         # Smart copy from Geneanet to Gramps inside GFamily
         self.smartcopy()
         with DbTxn("Geneanet import", db) as tran:
@@ -844,16 +842,14 @@ class GFamily(GBase):
             try:
                 grampsp0 = db.get_person_from_gid(self.father.gid)
             except:
-                if verbosity >= 2:
-                    print(_("No father for this family"))
+                display(_("No father for this family"), verbose=2)
                 grampsp0 = None
 
             if grampsp0:
                 try:
                     self.family.set_father_handle(grampsp0.get_handle())
                 except:
-                    if verbosity >= 2:
-                        print(_("Can't affect father to the family"))
+                    display(_("Can't affect father to the family"), verbose=2)
 
                 db.commit_family(self.family, tran)
                 grampsp0.add_family_handle(self.family.get_handle())
@@ -862,16 +858,14 @@ class GFamily(GBase):
             try:
                 grampsp1 = db.get_person_from_gid(self.mother.gid)
             except:
-                if verbosity >= 2:
-                    print(_("No mother for this family"))
+                display(_("No mother for this family"), verbose=2)
                 grampsp1 = None
 
             if grampsp1:
                 try:
                     self.family.set_mother_handle(grampsp1.get_handle())
                 except:
-                    if verbosity >= 2:
-                        print(_("Can't affect mother to the family"))
+                    display(_("Can't affect mother to the family"), verbose=2)
 
                 db.commit_family(self.family, tran)
                 grampsp1.add_family_handle(self.family.get_handle())
@@ -901,6 +895,8 @@ class GFamily(GBase):
         '''
         Adds a child GPerson child to the GFamily
         '''
+        display(_("GFamily::add_child"), level=2, verbose=1 )
+
         found = None
         i = 0
         # Avoid handling already processed children in Gramps
@@ -908,23 +904,21 @@ class GFamily(GBase):
             c = db.get_person_from_handle(cr.ref)
             if c.gramps_id == child.gid:
                 found = child
-                if verbosity >= 1:
-                    print(_("Child already existing : ")+child.firstname+" "+child.lastname)
+                display(_("Child already existing : ")+child.firstname+" "+child.lastname, verbose=1)
                 break
             # Ensure that the child is part of the family
 
         if not found:
             if child:
-                if verbosity >= 2:
-                    print(_("Adding child: ")+child.firstname+" "+child.lastname)
+                display(_("Adding child: ")+child.firstname+" "+child.lastname, verbose=2)
                 childref = ChildRef()
                 if child.grampsp:
                     try:
                         childref.set_reference_handle(child.grampsp.get_handle())
                     except:
-                        if verbosity >= 2:
-                            print(_("No handle for this child"))
+                        display(_("No handle for this child"), verbose=2)
                     self.family.add_child_ref(childref)
+
                     with DbTxn("Geneanet import", db) as tran:
                         db.commit_family(self.family, tran)
                         child.grampsp.add_parent_family_handle(self.family.get_handle())
@@ -937,12 +931,14 @@ class GFamily(GBase):
         '''
         analyze recursively the children of the GFamily passed in parameter
         '''
+        display(_("GFamily::recurse_children"), level=2, verbose=1 )
+
         try:
             cpt = len(self.g_childref)
         except:
-            if verbosity >= 1:
-                print(_("Stopping exploration as there are no more children for family ")+self.fater.firstname+" "+self.father.lastname+" - "+self.mother.firstname+" "+self.mother.lastname)
+            display(_("Stopping exploration as there are no more children for family ")+self.fater.firstname+" "+self.father.lastname+" - "+self.mother.firstname+" "+self.mother.lastname, verbose=1)
             return
+
         loop = False
         # Recurse while we have children urls and level not reached
         if level <= LEVEL and (cpt > 0):
@@ -950,14 +946,13 @@ class GFamily(GBase):
             level = level + 1
 
             if not self.family:
-                print(_("WARNING: No family found whereas there should be one :-("))
+                display(_("WARNING: No family found whereas there should be one :-("), verbose=1)
                 return
 
             # Create a GPerson from all children mentioned in Geneanet
             for c in self.g_childref:
                 child = geneanet_to_gedcom(None,level-1,None,c)
-                if verbosity >= 2:
-                    print(_("=> Recursion on the child of ")+self.father.lastname+' - '+self.mother.lastname+': '+child.firstname+' '+child.lastname)
+                display(_("=> Recursion on the child of ")+self.father.lastname+' - '+self.mother.lastname+': '+child.firstname+' '+child.lastname, verbose=2)
                 self.add_child(child)
 
                 fam = []
@@ -973,18 +968,15 @@ class GFamily(GBase):
                          for f in fam:
                              f.recurse_children(level)
 
-                if verbosity >= 2:
-                    print(_("=> End of recursion on the child of ")+self.father.lastname+' - '+self.mother.lastname+': '+child.firstname+' '+child.lastname)
+                display(_("=> End of recursion on the child of ")+self.father.lastname+' - '+self.mother.lastname+': '+child.firstname+' '+child.lastname, verbose=2)
 
         if not loop:
             if cpt == 0:
-                if verbosity >= 1:
-                    print(_("Stopping exploration for family ")+self.father.firstname+" "+self.father.lastname+' - '+self.mother.firstname+" "+self.mother.lastname+_(" as there are no more children"))
+                display(_("Stopping exploration for family ")+self.father.firstname+" "+self.father.lastname+' - '+self.mother.firstname+" "+self.mother.lastname+_(" as there are no more children"), verbose=1)
                 return
 
             if level > LEVEL:
-                if verbosity >= 1:
-                    print(_("Stopping exploration for family ")+self.father.firstname+" "+self.father.lastname+' - '+self.mother.firstname+" "+self.mother.lastname+_(" as we reached level ")+str(level))
+                display(_("Stopping exploration for family ")+self.father.firstname+" "+self.father.lastname+' - '+self.mother.firstname+" "+self.mother.lastname+_(" as we reached level ")+str(level), verbose=1)
         return
 
 #----------------------------------------------------------------------------------------------------------------------------------
@@ -998,8 +990,8 @@ class GPerson(GBase):
     Generic Person common between GEDCOM and Geneanet
     '''
     def __init__(self,level):
-        if verbosity >= 3:
-            print(_("Initialize Person at level %d")%(level))
+
+        display(_("GPerson::__init__ - Initialize Person at level %d")%(level), level=2, verbose=1 )
 
         # Counter
         self.level = level
@@ -1404,8 +1396,7 @@ class GPerson(GBase):
 
         self.gedcomp = individual
         self.gid = individual.id
-        if verbosity >= 1:
-            print(_("Create new GEDCOM Person: ")+self.gid+' ('+self.gedcomp.source+')')
+        display(_("Create new GEDCOM Person: ")+self.gid+' ('+self.g_firstname+' '+self.g_lastname+')'+' ['+self.gedcomp.source+']', verbose=1)
 
     # -------------------------------------------------------------------------
     # find_gedcom
@@ -1497,7 +1488,7 @@ class GPerson(GBase):
         #     except IndexError:
         #         self.gedcomp.add_child_element(gedcom.element(tag, level=level, value=value))
 
-        self.gedcomp.add_child_element(gedcom.element('NAME', level=1, value=(self.g_firstname + " " + self.g_lastname)))
+        self.gedcomp.add_child_element(gedcom.element('NAME', level=1, value=(self.g_firstname + " /" + self.g_lastname + "/")))
 
         self.gedcomp.add_child_element(gedcom.element('SEX', level=1, value=self.g_sex))
 
@@ -1521,18 +1512,15 @@ class GPerson(GBase):
         '''
         Fill a GPerson with its GEDCOM data
         '''
-
-        if verbosity >= 2:
-            print(_("Calling from_gedcom with gid: %s")%(gid))
+        display(_("GPerson::from_gedcom - gid: %s")%(gid), level=2, verbose=1 )
 
         # If our gid was already setup and we didn't pass one
         if not gid and self.gid:
             gid = self.gid
 
-        if verbosity >= 3:
-            print(_("Now gid is: %s")%(gid))
+        display(_("Now gid is: %s")%(gid), verbose=2)
 
-        # parse gedcom.individuals to get the one with geneanet url
+        # parse gedcom.individuals to get the one with geneanet relative url (aka. source)
         found = None
         for ind in gedcom.individuals:
             if ind.source != gid:
@@ -1542,11 +1530,10 @@ class GPerson(GBase):
             self.gedcomp = found
 
         if found:
-            if verbosity >= 1 and self.gid:
-                print(_("Existing GEDCOM Person: %s")%(self.gid))
+            if self.gid:
+                display(_("Existing GEDCOM Person: %s")%(self.gid), verbose=1)
         else:
-            if verbosity >= 1:
-                print(_("WARNING: Unable to retrieve id %s from the GEDCOM %s") %(gid, gname))
+            display(_("WARNING: Unable to retrieve id %s from the GEDCOM %s") %(gid, gname), verbose=1)
             # If we don't know who this is, try to find it in Gramps
             # This supposes that Geneanet data are already present in GPerson
             self.find_gedcom()
@@ -1554,86 +1541,57 @@ class GPerson(GBase):
             if self.gedcomp == None:
                 self.create_gedcom()
 
+        # Retrieve name
+
         try:
             self.firstname, self.lastname = self.gedcomp.name
         except:
             self.firstname, self.lastname = ( None, None )
 
-        if verbosity >= 1:
-            print(_("===> GEDCOM Name of %s: %s %s")%(self.gid, self.firstname, self.lastname))
+        display(_("===> GEDCOM Name of %s: %s %s")%(self.gid, self.firstname, self.lastname), verbose=1)
+
+        # Retrieve birth
 
         try:
             bd = self.gedcomp.birth
             if bd:
-                if verbosity >= 2:
-                    print(_("Birth:"),bd)
+                display(_("Birth: %s")%bd, verbose=2)
                 self.birthdate = bd.date
                 self.birthplace = bd.place
-            else:
-                if verbosity >= 2:
-                    print(_("No Birth date"))
         except:
-            if verbosity >= 1:
-                print(_("WARNING: Unable to retrieve birth date for id %s")%(self.gid))
+            display("Pas d'information sur la naissance", verbose=1)
+
+        # Retrieve death
 
         try:
             dd = self.gedcomp.death
             if dd:
-                if verbosity >= 2:
-                    print(_("Death:"),dd)
+                display(_("Death: %s")%dd, verbose=2)
                 self.deathdate = dd.date
                 self.deathplace = dd.place
-            else:
-                if verbosity >= 2:
-                    print(_("No Death date"))
         except:
-            if verbosity >= 1:
-                print(_("WARNING: Unable to retrieve death date for id %s")%(self.gid))
+            display("Pas d'information sur le décès", verbose=1)
 
         # Deal with the parents now, as they necessarily exist
+
         self.father = GPerson(self.level+1)
         self.mother = GPerson(self.level+1)
 
-        return
-
-# *********************************************************************************************************************
-# *********************************************************************************************************************
-
         try:
-            fh = self.grampsp.get_main_parents_family_handle()
-            if fh:
-                if verbosity >= 3:
-                    print(_("Family:"),fh)
-                fam = db.get_family_from_handle(fh)
-                if fam:
-                    if verbosity >= 3:
-                        print(_("Family:"),fam)
+            # find father from the family
+            self.father.gedcomp = self.gedcomp.father
+            if self.father.gedcomp:
+                display("Nom du père: %s"%(self.father.gedcomp.name), verbose=1)
+                self.father.gid = self.father.gedcomp.id
 
-                # find father from the family
-                fh = fam.get_father_handle()
-                if fh:
-                    if verbosity >= 3:
-                        print(_("Father H:"),fh)
-                    father = db.get_person_from_handle(fh)
-                    if father:
-                        if verbosity >= 1:
-                            print(_("Father name:"),father.primary_name.get_name())
-                        self.father.gid = father.gramps_id
-
-                # find mother from the family
-                mh = fam.get_mother_handle()
-                if mh:
-                    if verbosity >= 3:
-                        print(_("Mother H:"),mh)
-                    mother = db.get_person_from_handle(mh)
-                    if mother:
-                        if verbosity >= 1:
-                            print(_("Mother name:"),mother.primary_name.get_name())
-                        self.mother.gid = mother.gramps_id
+            # find mother from the family
+            self.mother.gedcomp = self.gedcomp.mother
+            if self.mother.gedcomp:
+                display("Nom de la mère: %s"%(self.mother.gedcomp.name))
+                self.mother.gid = self.mother.gedcomp.id
 
         except:
-            if verbosity >= 1:
-                print(_("NOTE: Unable to retrieve family for id %s")%(self.gid))
+            display(_("NOTE: Unable to retrieve family for id %s")%(self.gid), verbose=1)
 
     # -------------------------------------------------------------------------
     # add_spouses
@@ -1644,6 +1602,9 @@ class GPerson(GBase):
         Add all spouses for this person, with corresponding families
         returns all the families created in a list
         '''
+
+        display(_("GPerson::add_spouses"), level=2, verbose=1 )
+
         i = 0
         ret = []
         while i < len(self.spouseref):
@@ -1658,17 +1619,15 @@ class GPerson(GBase):
                 if spouse:
                     self.spouse.append(spouse)
                     spouse.spouse.append(self)
-                    # Create a GFamily with them and do a Geaneanet to Gramps for it
-                    if verbosity >= 2:
-                        print(_("=> Initialize Family of ")+self.firstname+" "+self.lastname+" + "+spouse.firstname+" "+spouse.lastname)
-                if self.sex == 'M':
+                    # Create a GFamily with them and do a Geaneanet to GEDCOM for it
+                    display(_("=> Initialize Family of %s %s - %s %s")%(self.firstname,self.lastname,spouse.firstname,spouse.lastname), verbose=1)
+                if self.g_sex == 'M':
                     f = GFamily(self, spouse)
-                elif self.sex == 'F':
+                elif self.g_sex == 'F':
                     f = GFamily(spouse, self)
                 else:
-                    if verbosity >= 1:
-                        print(_("Unable to Initialize Family of ")+self.firstname+" "+self.lastname+_(" sex unknown"))
-                        break
+                    display(_("Unable to Initialize Family of ")+self.firstname+" "+self.lastname+_(" sex unknown"), verbose=1)
+                    break
 
                 f.from_geneanet()
                 f.from_gedcom(f.gid)
@@ -1688,6 +1647,9 @@ class GPerson(GBase):
         '''
         analyze the parents of the person passed in parameter recursively
         '''
+
+        display(_("GPerson::recurse_parents"), level=2, verbose=1 )
+
         loop = False
         # Recurse while we have parents urls and level not reached
         if level <= LEVEL and (self.fatherref != "" or self.motherref != ""):
@@ -1773,6 +1735,9 @@ class GPerson(GBase):
         '''
         Login and password set for geneanet servers
         '''
+
+        display(_("GPerson::connexion_geneanet"), level=2, verbose=1 )
+
         import requests
 
         headers = {'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36' }
@@ -1809,6 +1774,8 @@ def geneanet_to_gedcom(p, level, gid, url):
     '''
     Function to create a person from Geneanet into GEDCOM
     '''
+
+    display(_("geneanet_to_gedcom - Person: %s, Level: %d, GID: %s, url: %s")%(p,level,gid,url), level=2, verbose=1 )
 
     # Create the Person coming from Geneanet
     if not p:
@@ -1851,6 +1818,234 @@ def geneanet_to_gedcom(p, level, gid, url):
     display( vars(p), title="geneanet_to_gedcom - Person [ %s ] %s"%(p.gid, p.ref) )
 
     return(p)
+
+###################################################################################################################################
+# Persons
+###################################################################################################################################
+
+class Persons():
+
+    def __init__(self, url):
+
+        display("Persons::__init__ - build tree from %s"%(url), level=2, verbose=1 )
+
+        self.persons = []
+
+        
+
+        # Counter
+        self.level = level
+
+        # GEDCOM
+        self.gid = None
+        self.gedcomp = None
+
+        # Father and Mother and Spouses GPersons
+        self.father = None
+        self.mother = None
+        self.spouse = []
+
+        # GFamilies
+        self.family = []
+
+        # Geneanet
+        self.url = ""
+        #self.html = ""
+        self.ref = ""
+
+        self.g_firstname = ""
+        self.g_lastname = ""
+        self.g_sex = 'U'
+        self.g_birthdate = None
+        self.g_birthplace = None
+        ##self.g_birthplacecode = None
+        self.g_deathdate = None
+        self.g_deathplace = None
+        ##self.g_deathplacecode = None
+
+        self.fatherref = ""
+        self.motherref = ""
+        self.spouseref = []
+        self.childref = []
+        self.marriagedate = []
+        self.marriageplace = []
+        ##self.marriageplacecode = []
+        self.divorcedate = []
+
+        self.user = "lburais" #storage and privacy issues
+        self.password = "twenty" #storage and privacy issues
+    
+###################################################################################################################################
+# Person
+###################################################################################################################################
+
+class Person():
+
+    def __init__(self, url):
+
+        display("Person::__init__", level=2, verbose=1 )
+
+        self.persons = []
+
+        # Counter
+        self.level = level
+
+        # GEDCOM
+        self.gedcom_id = None
+        self.gedcom_individual = None
+
+        # Geneanet
+        self.url = url
+
+        self.tree = get_geneanet( url )
+
+        parse_geneanet( self.tree )
+
+        self.geneanet_id = ""
+
+
+        # Father and Mother and Spouses GPersons
+        self.father = None
+        self.mother = None
+        self.spouse = []
+
+        # GFamilies
+        self.family = []
+
+        # Geneanet
+        self.ref = ""
+
+        self.g_firstname = ""
+        self.g_lastname = ""
+        self.g_sex = 'U'
+        self.g_birthdate = None
+        self.g_birthplace = None
+        ##self.g_birthplacecode = None
+        self.g_deathdate = None
+        self.g_deathplace = None
+        ##self.g_deathplacecode = None
+
+        self.fatherref = ""
+        self.motherref = ""
+        self.spouseref = []
+        self.childref = []
+        self.marriagedate = []
+        self.marriageplace = []
+        ##self.marriageplacecode = []
+        self.divorcedate = []
+
+        self.user = "lburais" #storage and privacy issues
+        self.password = "twenty" #storage and privacy issues
+
+    def parse_geneanet( self ):
+        return
+
+# -------------------------------------------------------------------------
+# connexion_geneanet
+# -------------------------------------------------------------------------
+def connexion_geneanet(user, password):
+    '''
+    Login and password set for geneanet servers
+    '''
+
+    display(_("connexion_geneanet"), level=2, verbose=1 )
+
+    import requests
+
+    headers = {'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36' }
+    r = requests.get( "https://www.geneanet.org/connexion/" ,headers=headers )
+    
+    pos1 = r.text.find('name="_csrf_token" value="')
+    pos1 = pos1 + len('name="_csrf_token" value="')
+    pos2 = r.text.find('"', pos1)
+    csrf = r.text[pos1:pos2]
+    cooks = r.cookies
+    headers.update({'referer':'https://www.geneanet.org/connexion/'})
+    headers.update({'authority':'www.geneanet.org'})
+    r = requests.post( "https://www.geneanet.org/connexion/login_check"
+            ,data={
+                    "_username": user
+                    ,"_password": password
+                    ,"_submit": ""
+                    ,"_remember_me": "1"
+                    ,"_csrf_token": csrf
+                    }
+            ,allow_redirects=False
+            ,cookies=cooks
+            ,headers=headers
+            )
+
+# -------------------------------------------------------------------------
+# get_geneanet
+# -------------------------------------------------------------------------
+def get_geneanet( url ):
+    ''' Use XPath to retrieve the details of a person
+    Used example from https://gist.github.com/IanHopkinson/ad45831a2fb73f537a79
+    and doc from https://www.w3schools.com/xml/xpath_axes.asp
+    and https://docs.python-guide.org/scenarios/scrape/
+
+    lxml can return _ElementUnicodeResult instead of str so cast
+    '''
+    
+    # Needed as Geneanet returned relative links
+    # https://edmundmartin.com
+    from random import choice
+
+    tree = None
+
+    desktop_agents = ['Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36',
+                'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36',
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_1) AppleWebKit/602.2.14 (KHTML, like Gecko) Version/10.0.1 Safari/602.2.14',
+                'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.71 Safari/537.36',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.98 Safari/537.36',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.98 Safari/537.36',
+                'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.71 Safari/537.36',
+                'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36',
+                'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:50.0) Gecko/20100101 Firefox/50.0']
+
+    def random_headers():
+        return {'User-Agent': choice(desktop_agents),'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'}
+
+    headers = random_headers()
+
+    display(_("url: %s")%(url), verbose=2)
+
+    if not url:
+        return None
+
+    display(_("get_geneanet - page considered: %s")%(url), level=2, verbose=1 )
+
+    import requests 
+    s = requests.session()
+    s.auth = (self.user, self.password)
+    header = s.head(url)
+
+    page = s.get(url)
+    if page.status_code == "302":
+        connexion_geneanet(user, password)
+
+    display( _("Return code: %s")%(page.status_code), error=True, verbose=3)
+
+    display( _("[Requests]: We failed to reach the server at %s")%(url), error=True)
+
+    if page.ok and page.status_code != "200" or "201":
+        try:
+            tree = html.fromstring(str(page.content))
+        except XMLSyntaxError:
+            pass
+
+        import urllib.request, ssl
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            page = urllib.request.urlopen(purl, context=ctx)
+        except urllib.error.HTTPError:
+            LOG.debug(purl)
+        tree = html.fromstring(page.read())
+
+    return tree
 
 ###################################################################################################################################
 # main
