@@ -6,19 +6,12 @@
     "configurations": [
 
 
+
         {
-            "name": "Test2",
+            "name": "scrap",
             "type": "debugpy",
             "request": "launch",
-            "program": "test2.py",
-            "console": "integratedTerminal",
-            "args": ""
-        },
-        {
-            "name": "Translate",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "translate.py",
+            "program": "test_scrap.py",
             "console": "integratedTerminal",
             "args": ""
         },
