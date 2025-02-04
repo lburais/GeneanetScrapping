@@ -1,5 +1,3 @@
-import selenium
-from selenium import webdriver
 
 from bs4 import BeautifulSoup
 from bs4 import Comment, NavigableString
@@ -15,19 +13,29 @@ pages = [
 
 def read_geneanet( page ):
 
-    content = []
+    import selenium
+    from selenium import webdriver
+
+    # contents is an array of tuples
+    # each tuple is the name of the bloc and content of the bloc
+
+    contents = []
+    medias = []
 
     browser = webdriver.Safari()
     browser.get(page)
 
     try:
+        # Focus on perso bloc
+
         soup = BeautifulSoup(browser.page_source, 'html.parser')
         perso = soup.find("div", {"id": "perso"})
 
+        # extract the medias
+
         medias = perso.find_all("img", attrs={"ng-src": re.compile(r".*")} )
 
-        if len(medias) > 0:
-            content = content + [( 'Medias', medias)]
+        # extract the geneanet blocs
 
         comments = perso.find_all(string=lambda text: isinstance(text, Comment))
 
@@ -41,7 +49,7 @@ def read_geneanet( page ):
                     break
                 extracted_content.append(str(sibling))
 
-            content = content + [( comment.strip(), BeautifulSoup( ''.join([i for i in extracted_content if i != '\n']), 'html.parser' ) )]
+            contents = contents + [( comment.strip(), BeautifulSoup( ''.join([i for i in extracted_content if i != '\n']), 'html.parser' ) )]
 
             comment.extract()
 
@@ -53,23 +61,21 @@ def read_geneanet( page ):
 
     browser.quit()
 
-    return content
+    return medias, contents
 
 
 for page in pages:
     print("#"*80)
     print(page)
 
-    ret = read_geneanet( page )
+    medias, contents = read_geneanet( page )
 
-    ret2 = []
-    for block in ret:
-        if isinstance( block[1], BeautifulSoup ):
-            ret2.append( "%s : %d"%(block[0], len(block[1].prettify())) )
-        else:
-            ret2.append( "%s : %d"%(block[0], len(block[1])) )
+    ret = [ "Medias : %d"%(len(medias)) ]
 
-    print( ', '.join(ret2))
+    for content in contents:
+        ret.append( "%s : %d"%(content[0], len(content[1].prettify())) )
+
+    print( ', '.join(ret))
 
     print("#"*80)
 
