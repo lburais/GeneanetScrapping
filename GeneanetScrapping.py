@@ -318,6 +318,7 @@ class GPerson(GBase):
         self.father = None
         self.mother = None
         self.spouse = []
+        self.child = []
 
         # GFamilies
         self.family = []
@@ -331,18 +332,17 @@ class GPerson(GBase):
         self.sex = 'U'
         self.birthdate = None
         self.birthplace = None
-        self.birthplacecode = None
         self.deathdate = None
         self.deathplace = None
-        self.deathplacecode = None
 
         self.fatherref = ""
         self.motherref = ""
-        self.spouseref = []
+
         self.childref = []
+
+        self.spouseref = []
         self.marriagedate = []
         self.marriageplace = []
-        self.marriageplacecode = []
         self.divorcedate = []
 
     # -------------------------------------------------------------------------
@@ -371,7 +371,7 @@ class GPerson(GBase):
         if tree:
 
             self.url = purl
-            self.title = tree.xpath('//title/text()')
+            self.title = tree.xpath('//title/text()')[0]
 
             # Wait after a Genanet request to be fair with the site
             # between 2 and 7 seconds
@@ -391,14 +391,14 @@ class GPerson(GBase):
             # -----------------------------------------------------------------
 
             try:
-                names = tree.xpath('//span[@ng-non-bindable=""]//a/text()')
+                #names = tree.xpath('//span[@ng-non-bindable=""]//a/text()')
+                names = tree.xpath('//div[@id="person-title"]//a/text()')
                 self.firstname = str(names[0]).title()
                 self.lastname = str(names[1]).title()
             except:
                 pass
 
-            display("Niveau: %d"%(self.level), verbose=1)
-            display("Nom: %s %s"%(self.firstname,self.lastname), verbose=1)
+            display("Nom: %s - %s"%(self.firstname,self.lastname), verbose=1)
 
             # -----------------------------------------------------------------
             # sex
@@ -408,7 +408,6 @@ class GPerson(GBase):
                 # Should return M or F
                 sex = tree.xpath('//div[@id="person-title"]//img/attribute::alt')
                 self.sex = sex[0]
-                # Seems we have a french codification on the site
                 if sex[0] == 'H':
                     self.sex = 'M'
             except:
@@ -426,8 +425,6 @@ class GPerson(GBase):
             except:
                 birth = [""]
 
-            display("==> birth: %s"%(birth), verbose=2)
-
             try:
                 ld = convert_date(birth[0].split('-')[0].split()[1:])
                 self.birthdate = format_ca(ld)
@@ -437,8 +434,7 @@ class GPerson(GBase):
                 self.birthdate = None
                 
             try:
-                bp = str(birth[0].split(' - ')[1])
-                self.birthplace = bp.partition("à l'âge")[0]
+                self.birthplace = str(birth[0].split(' - ')[1])
 
                 display("Lieu de naissance: %s"%(self.birthplace), verbose=1)
             except:
@@ -456,8 +452,6 @@ class GPerson(GBase):
                 death = tree.xpath(dstring)
             except:
                 death = [""]
-
-            display("==> death: %s"%(death), verbose=2)
 
             try:
                 ld = convert_date(death[0].split('-')[0].split()[1:])
@@ -491,56 +485,49 @@ class GPerson(GBase):
             except:
                 parents = []
 
-            self.fref = ""
-            self.mref = ""
-            prefl = []
+            self.fatherref = ""
+            self.motherref = ""
+            parentsref = []
 
             for p in parents:
-                display('==> parent text', p.xpath('text()'), verbose=2)
+                display('==> parent text', p.xpath('text()'), verbose=1)
 
                 for a in p.xpath('a'):
-                    pref = a.xpath('attribute::href')[0]
+                    parentref = a.xpath('attribute::href')[0]
 
-                    display("Référence du parent: %s"%(pref), verbose=1)
+                    display("Référence du parent: %s"%(parentref), verbose=1)
 
                     try:
                         pname = a.xpath('text()')[0].title()
+                        display("Nom du parent: %s"%(pname), verbose=1)
                     except:
-                        pname = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
-                        # if pname is ? ? then go to next one
+                        pass
 
-                    display("Nom du parent: %s"%(pname), verbose=1)
-
-                else:
-                    pass
-                prefl.append(str(pref))
+                    parentsref.append(str(parentref))
+    
+            try:
+                self.fatherref = parentsref[0]
+            except:
+                self.fatherref = ""
 
             try:
-                self.fref = prefl[0]
+                self.motherref = parentsref[1]
             except:
-                self.fref = ""
-
-            try:
-                self.mref = prefl[1]
-            except:
-                self.mref = ""
+                self.motherref = ""
 
             # -----------------------------------------------------------------
             # spouses
             # -----------------------------------------------------------------
             try:
                 spouses = tree.xpath('//ul[@class="fiche_union"]/li')
+                spousestxt = tree.xpath('//ul[@class="fiche_union"]/li/text()')
                 
-                display("==> spouses: %s"%(spouses), verbose=2 )
+                display("==> Nombre de conjoints: %d"%(len(spouses)), verbose=1 )
 
             except:
-                LOG.debug(str(tree.xpath('//ul[@class="fiche_union"]/li')))
                 spouses = []
 
             s = 0
-            sname = []
-            sref = []
-            marriage = []
 
             for spouse in spouses:
                 display("---------------------------", verbose=1)
@@ -554,36 +541,27 @@ class GPerson(GBase):
 
                         display("Conjoint %d ref: %s"%(s, ref), verbose=1)
                     except:
-                        ref = None
+                        ref = ""
 
                     try:
                         sname.append(str(a.xpath('text()')[0]).title())
 
                         display("Nom du conjoint: %s"%(sname[s]), verbose=1)
                     except:
-                        sname.append("")
+                        pass
 
-                    try:
-                        sref.append(str(a.xpath('attribute::href')[0]))
-                        display("Référence du conjoint: %s"%(purl+sref[s]), verbose=1)
-                    except:
-                        sref.append("")
-
-                    try:
-                        self.spouseref.append(sref[s])
-                    except:
-                        continue
+                    self.spouseref.append(ref)
 
                 # -------------------------------------------------------------
                 # marriage
                 # -------------------------------------------------------------
                 try:
-                    marriage.append(str(spouse.xpath('em/text()')[0]))
+                    marriage = str(spouse.xpath('em/text()')[0])
                 except:
-                    marriage.append(None)
+                    marriage = None
                     
                 try:
-                    ld = convert_date(marriage[s].split(',')[0].split()[1:])
+                    ld = convert_date(marriage.split(',')[0].split()[1:])
                     self.marriagedate.append(format_ca(ld))
 
                     display("Date du marriage: %s"%(ld), verbose=1)
@@ -591,15 +569,30 @@ class GPerson(GBase):
                     self.marriagedate.append(None)
 
                 try:
-                    self.marriageplace.append(str(marriage[0].split(',')[1][1:]).title())
+                    lp = ', '.join([x for x in marriage.strip().split(',')[1:] if x])
+                    self.marriageplace.append(lp)
                     
-                    display("Lieu du marriage:"%(self.marriageplace[0]), verbose=1)
+                    display("Lieu du marriage: %s"%(lp), verbose=1)
                 except:
-                    self.marriageplace.append(str(marriage[0]))
+                    self.marriageplace.append(None)
 
                 # -------------------------------------------------------------
                 # divorce
                 # -------------------------------------------------------------
+
+                try:
+                    divorce = spouse.xpath(em/text())
+                    divorce = spouse.partition("divorcé")[1]
+                except:
+                    divorce = None
+                    
+                try:
+                    ld = convert_date(divorce.split(',')[0].split()[1:])
+                    self.divorcedate.append(format_ca(ld))
+
+                    display("Date du divorce: %s"%(ld), verbose=1)
+                except:
+                    self.divorcedate.append(None)
 
                 # -------------------------------------------------------------
                 # childs
@@ -912,6 +905,8 @@ def main():
     # Create the first Person
 
     gp = geneanet_to_gedcom(None, 0, None, purl)
+
+    exit(0)
 
     if gp != None:
         if ascendants:

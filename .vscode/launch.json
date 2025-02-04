@@ -30,6 +30,22 @@
             "program": "GeneanetScrapping.py",
             "console": "integratedTerminal",
             "args": "-v 'https://gw.geneanet.org/lipari?lang=fr&pz=alexia&nz=henry&p=gabrielle+denise+josephine&n=bessey' -g gedcom.ged"
+        },
+        {
+            "name": "Gabrielle",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "GeneanetScrapping.py",
+            "console": "integratedTerminal",
+            "args": "-v 'https://gw.geneanet.org/lipari?lang=fr&pz=alexia&nz=henry&p=gabrielle+denise+josephine&n=bessey' -g gedcom.ged"
+        },
+        {
+            "name": "Marguerite",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "GeneanetScrapping.py",
+            "console": "integratedTerminal",
+            "args": "-v 'https://gw.geneanet.org/asempey?lang=fr&n=jantieu&p=margueritte&oc=0' -g gedcom.ged"
         }
     ]
 }
