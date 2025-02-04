@@ -133,6 +133,15 @@ _ = translation.gettext
 
 #-------------------------------------------------------------------------
 #
+# Web Scrapping
+#
+#-------------------------------------------------------------------------
+
+from bs4 import BeautifulSoup
+from bs4 import Comment, NavigableString
+
+#-------------------------------------------------------------------------
+#
 # Other Python Modules
 #
 #-------------------------------------------------------------------------
@@ -346,6 +355,62 @@ class GPerson(GBase):
         self.divorcedate = []
 
     # -------------------------------------------------------------------------
+    # read_geneanet
+    # -------------------------------------------------------------------------
+
+    def read_geneanet( self, page ):
+
+        import selenium
+        from selenium import webdriver
+
+        # contents is an array of tuples
+        # each tuple is the name of the bloc and content of the bloc
+
+        contents = []
+        medias = []
+
+        browser = webdriver.Safari()
+        browser.get(page)
+
+        try:
+            # Focus on perso bloc
+
+            soup = BeautifulSoup(browser.page_source, 'html.parser')
+            perso = soup.find("div", {"id": "perso"})
+
+            # extract the medias
+
+            medias = perso.find_all("img", attrs={"ng-src": re.compile(r".*")} )
+
+            # extract the geneanet blocs
+
+            comments = perso.find_all(string=lambda text: isinstance(text, Comment))
+
+            for comment in comments:
+                if ' ng' in comment or 'Arbre' in comment or 'Frere' in comment:
+                    continue
+
+                extracted_content = []
+                for sibling in comment.next_siblings:
+                    if isinstance( sibling, Comment ):
+                        break
+                    extracted_content.append(str(sibling))
+
+                contents = contents + [( comment.strip(), BeautifulSoup( ''.join([i for i in extracted_content if i != '\n']), 'html.parser' ) )]
+
+                comment.extract()
+
+        except:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            message = f'Exception [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
+            print( message )
+            pass
+
+        browser.quit()
+
+        return perso, medias, contents
+
+    # -------------------------------------------------------------------------
     # scrap_geneanet
     # -------------------------------------------------------------------------
 
@@ -358,20 +423,13 @@ class GPerson(GBase):
 
         # read web page
         
-        import selenium
-        from selenium import webdriver
-
-        browser = webdriver.Safari()
-        browser.get(purl)
-
-        tree = html.fromstring(str(browser.page_source))
-
-        browser.quit()
+        perso, medias, contents = self.read_geneanet( purl )
+        tree = html.fromstring(perso.prettify())
 
         if tree:
 
             self.url = purl
-            self.title = tree.xpath('//title/text()')[0]
+            # self.title = tree.xpath('//title/text()')[0]
 
             # Wait after a Genanet request to be fair with the site
             # between 2 and 7 seconds

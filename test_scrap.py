@@ -61,14 +61,14 @@ def read_geneanet( page ):
 
     browser.quit()
 
-    return medias, contents
+    return perso, medias, contents
 
 
 for page in pages:
     print("#"*80)
     print(page)
 
-    medias, contents = read_geneanet( page )
+    perso, medias, contents = read_geneanet( page )
 
     ret = [ "Medias : %d"%(len(medias)) ]
 
@@ -77,5 +77,9 @@ for page in pages:
 
     print( ', '.join(ret))
 
+    print("#"*80)
+
+    print( perso.prettify() )
+    
     print("#"*80)
 
