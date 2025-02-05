@@ -5,6 +5,7 @@ from bs4 import Comment, NavigableString
 import sys
 import os
 import re
+import urllib
 
 pages = [
   'https://gw.geneanet.org/lipari?lang=fr&n=bessey&p=gabrielle+denise+josephine',
@@ -15,6 +16,15 @@ def read_geneanet( page ):
 
     import selenium
     from selenium import webdriver
+
+    # clean queries: keep  lang
+    queries = urllib.parse.parse_qs(urllib.parse.urlparse(page).query)
+    queries_to_keep = [ 'nz', 'pz', 'm', 'v', 'p', 'n' ]
+    query_string = urllib.parse.urlencode({k: v for k, v in queries.items() if k in queries_to_keep}, doseq=True)
+    print( urllib.parse.urlunparse(urllib.parse.urlparse(page)._replace(query=query_string)) )
+
+    print( "Removed queries: %s"%({k: v for k, v in queries.items() if k not in queries_to_keep}) )
+
 
     # contents is an array of tuples
     # each tuple is the name of the bloc and content of the bloc

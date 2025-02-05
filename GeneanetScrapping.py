@@ -30,6 +30,7 @@ import argparse
 import urllib
 from lxml import html, etree
 import babel, babel.dates
+from collections import namedtuple
 
 #-------------------------------------------------------------------------
 #
@@ -335,7 +336,8 @@ class GPerson(GBase):
         # Geneanet
         self.url = ""
         self.ref = ""
-
+        
+        self.sosa = None
         self.firstname = ""
         self.lastname = ""
         self.sex = 'U'
@@ -344,15 +346,26 @@ class GPerson(GBase):
         self.deathdate = None
         self.deathplace = None
 
-        self.fatherref = ""
-        self.motherref = ""
+        self.fatherref = None
+        self.motherref = None
 
-        self.childref = []
+        self.unions = []
 
-        self.spouseref = []
-        self.marriagedate = []
-        self.marriageplace = []
-        self.divorcedate = []
+    # -------------------------------------------------------------------------
+    # _clean_ref
+    # -------------------------------------------------------------------------
+
+    def _clean_ref( self, ref ):
+
+        queries = urllib.parse.parse_qs(urllib.parse.urlparse(ref).query)
+        queries_to_keep = [ 'nz', 'pz', 'm', 'v', 'p', 'n', 'oc' ]
+
+        removed_queries = {k: v for k, v in queries.items() if k not in queries_to_keep + ['lang']}
+        if len(removed_queries) > 0:
+            display( "Removed queries: %s"%(removed_queries) )
+
+        return re.sub( r'^/', '', urllib.parse.urlparse(ref).path ) + "?" + urllib.parse.urlencode({k: v for k, v in queries.items() if k != 'lang'}, doseq=True)
+        return re.sub( r'^/', '', urllib.parse.urlparse(ref).path ) + "?" + urllib.parse.urlencode({k: v for k, v in queries.items() if k in queries_to_keep}, doseq=True)
 
     # -------------------------------------------------------------------------
     # read_geneanet
@@ -363,11 +376,22 @@ class GPerson(GBase):
         import selenium
         from selenium import webdriver
 
+        # force fr language
+
+        queries = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(page).query))
+        if 'lang' in queries:
+            if queries['lang'] != 'fr':
+                page = page.replace( "&", "&lang=fr" )
+        else:
+            page = page.replace( "lang=" + queries['lang'], "lang=fr" )
+
         # contents is an array of tuples
         # each tuple is the name of the bloc and content of the bloc
 
         contents = []
         medias = []
+
+        Section = namedtuple("Section", "name content")
 
         browser = webdriver.Safari()
         browser.get(page)
@@ -382,12 +406,12 @@ class GPerson(GBase):
 
             medias = perso.find_all("img", attrs={"ng-src": re.compile(r".*")} )
 
-            # extract the geneanet blocs
+            # extract the geneanet sections
 
             comments = perso.find_all(string=lambda text: isinstance(text, Comment))
 
             for comment in comments:
-                if ' ng' in comment or 'Arbre' in comment or 'Frere' in comment:
+                if ' ng' in comment or 'Arbre' in comment:
                     continue
 
                 extracted_content = []
@@ -396,7 +420,7 @@ class GPerson(GBase):
                         break
                     extracted_content.append(str(sibling))
 
-                contents = contents + [( comment.strip(), BeautifulSoup( ''.join([i for i in extracted_content if i != '\n']), 'html.parser' ) )]
+                contents = contents + [Section( comment.strip(), BeautifulSoup( ''.join([i for i in extracted_content if i != '\n']), 'html.parser' ) )]
 
                 comment.extract()
 
@@ -423,269 +447,195 @@ class GPerson(GBase):
 
         # read web page
         
-        perso, medias, contents = self.read_geneanet( purl )
+        perso, medias, sections = self.read_geneanet( purl )
+
         tree = html.fromstring(perso.prettify())
 
-        if tree:
+        self.url = purl
+        # self.title = tree.xpath('//title/text()')[0]
 
-            self.url = purl
-            # self.title = tree.xpath('//title/text()')[0]
+        # -----------------------------------------------------------------
+        # ref
+        # -----------------------------------------------------------------
+        
+        self.ref = self._clean_ref( purl )
 
-            # Wait after a Genanet request to be fair with the site
-            # between 2 and 7 seconds
-            time.sleep(random.randint(2,7))
+        for section in sections:
 
-            # -----------------------------------------------------------------
-            # ref
-            # -----------------------------------------------------------------
-            
-            pu = urllib.parse.urlparse(purl)
-            self.ref = pu.path[1:] + "?" + pu.query
+            # -------------------------------------------------------------
+            # Portrait section
+            # -------------------------------------------------------------
+            if 'portrait' in section.name.lower():
 
-            display("Référence: %s"%(self.ref), verbose=1)
+                # sosa
+                try:
+                    sosa = section.content.find("em", {"class" : "sosa"}).find_all("a")
 
-            # -----------------------------------------------------------------
-            # firstname & lastname
-            # -----------------------------------------------------------------
+                    self.sosa = int(sosa[0].get_text().replace('\xa0', ''))
+                except:
+                    pass
 
-            try:
-                #names = tree.xpath('//span[@ng-non-bindable=""]//a/text()')
-                names = tree.xpath('//div[@id="person-title"]//a/text()')
-                self.firstname = str(names[0]).title()
-                self.lastname = str(names[1]).title()
-            except:
+                # first and last names
+                try:
+                    names = section.content.find("div", {"id" : "person-title"}).find_all_next("a")
+
+                    self.firstname = names[0].get_text().title()
+                    self.lastname = names[1].get_text().title()
+                except:
+                    pass
+
+                # sex: should return M or F
+                try:
+                    sex = section.content.find("div", {"id" : "person-title"}).find_all_next("img", alt=True)
+
+                    self.sex = sex[0]['alt']
+                    if sex[0] == 'H':
+                        self.sex = 'M'
+                except:
+                    self.sex = 'U'
+
+                # birth
+                try:
+                    birth = section.content.find_all('li', string=lambda text: "Né" in text if text else False)[0].get_text()
+                except:
+                    birth = ""
+
+                try:
+                    self.birthdate = format_ca( convert_date(birth.split('-')[0].split()[1:]) )
+                except:
+                    self.birthdate = None
+
+                try:
+                    self.birthplace = str(birth.split(' - ')[1])
+                except:
+                    if len(birth) < 1:
+                        pass
+                    else:
+                        self.birthplace = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
+
+                # death
+                try:
+                    death = section.content.find_all('li', string=lambda text: "Décédé" in text if text else False)[0].get_text()
+                except:
+                    death = ""
+
+                try:
+                    self.deathdate = format_ca( convert_date(death.split('-')[0].split()[1:]) )
+                except:
+                    self.deathdate = None
+
+                try:
+                    self.deathplace = re.split(f"{re.escape(",\nà l'âge")}|{re.escape(", à l'âge")}", str(death.split(' - ')[1]))[0]
+                except:
+                    if len(death) < 1:
+                        pass
+                    else:
+                        self.deathplace = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
+
+            # -------------------------------------------------------------
+            # Parents section
+            # -------------------------------------------------------------
+            elif 'parents' in section.name.lower():
+                
+                try:
+                    parents = [item for item in section.content.find_all("a") if len( item.find_all("img", {"alt" : "sosa"}) ) == 0]
+                except:
+                    parents = []
+
+                try:
+                    self.fatherref = self._clean_ref( parents[0]['href'] )
+                except:
+                    self.fatherref = None
+
+                try:
+                    self.motherref = self._clean_ref( parents[1]['href'] )
+                except:
+                    self.motherref = None
+
+            # -------------------------------------------------------------
+            # Union section
+            # -------------------------------------------------------------
+            elif 'union' in section.name.lower():
+                Union = namedtuple("Marriage", "spouseref date place divorce childs")
+
+                try:
+                    unions = section.content.find('ul', class_=re.compile('.*fiche_union.*') ).find_all( "li", recursive=False )
+
+                    for union in unions:
+                        try:
+                            marriage = union.find("em").get_text()
+                        except:
+                            marriage = None
+                            
+                        # marriage date
+                        try:
+                            marriagedate = format_ca( convert_date(marriage.split(',')[0].split()[1:]) )
+                        except:
+                            marriagedate = None
+
+                        # marriage place
+                        try:
+                            marriageplace = ', '.join([x for x in marriage.strip().split(',')[1:] if x]).strip()                           
+                        except:
+                            marriageplace = None
+
+                        # spouse ref
+                        try:
+                            spouseref = self._clean_ref( union.find("a")['href'] )
+                        except:
+                            spouseref = None
+
+                        # divorce date
+                        divorcedate = None
+                        display("Add divorce processing")
+
+                        # childs
+                        try:
+                            children = union.find("ul").find_all( "li", recursive=False )
+                            childs = []
+                            for child in children:
+                                ahref = child.find_all("a", lambda attr: attr.get('alt') != 'sosa' or attr.get('alt') is None)
+                            childs = [ self._clean_ref( child.find_all('a', lambda tag: tag.get('alt') != 'sosa' or tag.get('alt') is None)[0]['href'] ) for child in union.find("ul").find_all( "li", recursive=False ) ]
+                        except:
+                            childs = []
+
+                        self.unions = self.unions + [Union( spouseref, marriagedate, marriageplace, divorcedate, childs)]
+
+                except:
+                    pass
+
+            # -------------------------------------------------------------
+            # Union section
+            # -------------------------------------------------------------
+            elif 'union evolue' in section.name.lower():
                 pass
 
-            display("Nom: %s - %s"%(self.firstname,self.lastname), verbose=1)
+            # -------------------------------------------------------------
+            # Union section
+            # -------------------------------------------------------------
+            elif 'freres et soeurs complet' in section.name.lower():
+                display("Add processing for section: %s"%(section.name))
 
-            # -----------------------------------------------------------------
-            # sex
-            # -----------------------------------------------------------------
+            # -------------------------------------------------------------
+            # Union section
+            # -------------------------------------------------------------
+            elif 'related' in section.name.lower():
+                display("Add processing for section: %s"%(section.name))
 
-            try:
-                # Should return M or F
-                sex = tree.xpath('//div[@id="person-title"]//img/attribute::alt')
-                self.sex = sex[0]
-                if sex[0] == 'H':
-                    self.sex = 'M'
-            except:
-                self.sex = 'U'
+            elif 'relation' in section.name.lower():
+                display("Add processing for section: %s"%(section.name))
 
-            display("Sexe: %s"%(self.sex), verbose=1)
-
-            # -----------------------------------------------------------------
-            # birth
-            # -----------------------------------------------------------------
-
-            try:
-                bstring = '//li[contains(., "Né")]/text()'
-                birth = tree.xpath(bstring)
-            except:
-                birth = [""]
-
-            try:
-                ld = convert_date(birth[0].split('-')[0].split()[1:])
-                self.birthdate = format_ca(ld)
-
-                display("Date de naissance: %s"%(self.birthdate), verbose=1)
-            except:
-                self.birthdate = None
-                
-            try:
-                self.birthplace = str(birth[0].split(' - ')[1])
-
-                display("Lieu de naissance: %s"%(self.birthplace), verbose=1)
-            except:
-                if len(birth) < 1:
-                    pass
+            elif 'notes' in section.name.lower():
+                if 'timeline' in section.name.lower():
+                    display("Add processing for section: %s"%(section.name))
                 else:
-                    self.birthplace = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
+                    display("Add processing for section: %s"%(section.name))
 
-            # -----------------------------------------------------------------
-            # death
-            # -----------------------------------------------------------------
+            elif 'sources' in section.name.lower():
+                display("Add processing for section: %s"%(section.name))
 
-            try:
-                dstring = '//li[contains(., "Décédé")]/text()'
-                death = tree.xpath(dstring)
-            except:
-                death = [""]
-
-            try:
-                ld = convert_date(death[0].split('-')[0].split()[1:])
-                self.deathdate = format_ca(ld)
-
-                display("Date de décès: %s"%(self.deathdate), verbose=1)
-            except:
-                self.deathdate = None
-
-            try:
-                dp = str(death[0].split(' - ')[1])
-                self.deathplace = dp.partition(",\nà l'âge")[0]
-
-                display("Lieu de décès: %s"%(self.deathplace), verbose=1)
-            except:
-                if len(death) < 1:
-                    pass
-                else:
-                    self.deathplace = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
-
-            # -----------------------------------------------------------------
-            # parents
-            # -----------------------------------------------------------------
-
-            try:
-                # sometime parents are using circle, sometimes disc !
-                # parents = tree.xpath('//ul[not(descendant-or-self::*[@class="fiche_union"])]//li[@style="vertical-align:middle;list-style-type:disc" or @style="vertical-align:middle;list-style-type:circle"]//a/attribute::href')
-                parents = tree.xpath('//ul[not(descendant-or-self::*[@class="fiche_union"])]//li[@style="vertical-align:middle;list-style-type:disc" or @style="vertical-align:middle;list-style-type:circle"]')
-                parents = tree.xpath('//ul[not(@class="fiche_union")]//li[@style="vertical-align:middle;list-style-type:disc" or @style="vertical-align:middle;list-style-type:circle"]')
-
-            except:
-                parents = []
-
-            self.fatherref = ""
-            self.motherref = ""
-            parentsref = []
-
-            for p in parents:
-                display('==> parent text', p.xpath('text()'), verbose=1)
-
-                for a in p.xpath('a'):
-                    parentref = a.xpath('attribute::href')[0]
-
-                    display("Référence du parent: %s"%(parentref), verbose=1)
-
-                    try:
-                        pname = a.xpath('text()')[0].title()
-                        display("Nom du parent: %s"%(pname), verbose=1)
-                    except:
-                        pass
-
-                    parentsref.append(str(parentref))
-    
-            try:
-                self.fatherref = parentsref[0]
-            except:
-                self.fatherref = ""
-
-            try:
-                self.motherref = parentsref[1]
-            except:
-                self.motherref = ""
-
-            # -----------------------------------------------------------------
-            # spouses
-            # -----------------------------------------------------------------
-            try:
-                spouses = tree.xpath('//ul[@class="fiche_union"]/li')
-                spousestxt = tree.xpath('//ul[@class="fiche_union"]/li/text()')
-                
-                display("==> Nombre de conjoints: %d"%(len(spouses)), verbose=1 )
-
-            except:
-                spouses = []
-
-            s = 0
-
-            for spouse in spouses:
-                display("---------------------------", verbose=1)
-
-                # -------------------------------------------------------------
-                # spouse
-                # -------------------------------------------------------------
-                for a in spouse.xpath('a'):
-                    try:
-                        ref = a.xpath('attribute::href')[0]
-
-                        display("Conjoint %d ref: %s"%(s, ref), verbose=1)
-                    except:
-                        ref = ""
-
-                    try:
-                        sname.append(str(a.xpath('text()')[0]).title())
-
-                        display("Nom du conjoint: %s"%(sname[s]), verbose=1)
-                    except:
-                        pass
-
-                    self.spouseref.append(ref)
-
-                # -------------------------------------------------------------
-                # marriage
-                # -------------------------------------------------------------
-                try:
-                    marriage = str(spouse.xpath('em/text()')[0])
-                except:
-                    marriage = None
-                    
-                try:
-                    ld = convert_date(marriage.split(',')[0].split()[1:])
-                    self.marriagedate.append(format_ca(ld))
-
-                    display("Date du marriage: %s"%(ld), verbose=1)
-                except:
-                    self.marriagedate.append(None)
-
-                try:
-                    lp = ', '.join([x for x in marriage.strip().split(',')[1:] if x])
-                    self.marriageplace.append(lp)
-                    
-                    display("Lieu du marriage: %s"%(lp), verbose=1)
-                except:
-                    self.marriageplace.append(None)
-
-                # -------------------------------------------------------------
-                # divorce
-                # -------------------------------------------------------------
-
-                try:
-                    divorce = spouse.xpath(em/text())
-                    divorce = spouse.partition("divorcé")[1]
-                except:
-                    divorce = None
-                    
-                try:
-                    ld = convert_date(divorce.split(',')[0].split()[1:])
-                    self.divorcedate.append(format_ca(ld))
-
-                    display("Date du divorce: %s"%(ld), verbose=1)
-                except:
-                    self.divorcedate.append(None)
-
-                # -------------------------------------------------------------
-                # childs
-                # -------------------------------------------------------------
-
-                cnum = 0
-                clist = []
-                for c in spouse.xpath('ul/li/a[1]'):
-                    display("-------------", verbose=1)
-
-                    try:
-                        cref = c.xpath('attribute::href')[0]
-
-                        display("Enfant %d ref: %s"%(cnum, cref), verbose=1)
-                    except:
-                        cref = None
-
-                    try:
-                        cname = c.xpath('text()')[0].title()
-                        display("Nom de l'enfant: %s"%(cname), verbose=1)
-                    except:
-                        pass
-
-                    clist.append(cref)
-                    cnum = cnum + 1
-
-                self.childref.append(clist)
-
-                s = s + 1
-                # End spouse loop
-
-            display("-----------------------------------------------------------", verbose=1)
-
-        else:
-            display("We failed to be ok with the server", error=True)
+            else:
+                display("Unprocessed section: %s"%(section.name))
 
     # -------------------------------------------------------------------------
     # add_spouses
@@ -923,16 +873,6 @@ def main():
         return -1
     else:
         purl = args.searchedperson
-
-        # set fr language
-        queries = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(purl).query))
-        if 'lang' in queries:
-            if queries['lang'] == 'fr':
-                pass
-            else:
-                purl = purl.replace( "&", "&lang=fr" )
-        else:
-            purl = purl.replace( "lang=" + queries['lang'], "lang=fr" )
 
     gname = args.gedcomfile
     verbosity = args.verbosity
