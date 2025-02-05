@@ -590,12 +590,11 @@ class GPerson(GBase):
                         display("Add divorce processing")
 
                         # childs
+                        childs = []
                         try:
-                            children = union.find("ul").find_all( "li", recursive=False )
-                            childs = []
-                            for child in children:
-                                ahref = child.find_all("a", lambda attr: attr.get('alt') != 'sosa' or attr.get('alt') is None)
-                            childs = [ self._clean_ref( child.find_all('a', lambda tag: tag.get('alt') != 'sosa' or tag.get('alt') is None)[0]['href'] ) for child in union.find("ul").find_all( "li", recursive=False ) ]
+                            for item in union.find("ul").find_all( "li", recursive=False ):
+                                tags_a = item.find_all('a')
+                                childs = childs + [ tags_a[1]['href'] if tags_a[0].find("img") else tags_a[0]['href'] ]
                         except:
                             childs = []
 
