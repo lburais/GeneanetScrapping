@@ -28,7 +28,7 @@ import re
 import random
 import argparse
 import urllib
-from lxml import html, etree
+#from lxml import html, etree
 import babel, babel.dates
 from collections import namedtuple
 
@@ -46,6 +46,8 @@ spouses = False
 LEVEL = 2
 
 ROOTURL = 'https://gw.geneanet.org/'
+
+persons = {}
 
 #-------------------------------------------------------------------------
 #
@@ -244,6 +246,31 @@ def convert_date(datetab):
         bd2 = babel.dates.parse_date(bd1, locale=locale)
     return(bd2.strftime("%Y-%m-%d"))
 
+def clean_ref( ref ):
+
+    queries = urllib.parse.parse_qs(urllib.parse.urlparse(ref).query)
+    queries_to_keep = [ 'nz', 'pz', 'm', 'v', 'p', 'n', 'oc' ]
+
+    removed_queries = {k: v for k, v in queries.items() if k not in queries_to_keep + ['lang']}
+    if len(removed_queries) > 0:
+        display( "Removed queries: %s"%(removed_queries) )
+
+    return re.sub( r'^/', '', urllib.parse.urlparse(ref).path ) + "?" + urllib.parse.urlencode({k: v for k, v in queries.items() if k != 'lang'}, doseq=True)
+    return re.sub( r'^/', '', urllib.parse.urlparse(ref).path ) + "?" + urllib.parse.urlencode({k: v for k, v in queries.items() if k in queries_to_keep}, doseq=True)
+
+def clean_text( html, md = True, links = False, images = False, emphasis = False ):
+    import html2text
+    import markdown
+
+    converter = html2text.HTML2Text()
+    converter.ignore_links = links
+    converter.ignore_images = images
+    converter.ignore_emphasis = emphasis
+    if md:
+        return converter.handle( html )
+    else:
+        return markdown.markdown( converter.handle( html ) )
+
 #-------------------------------------------------------------------------
 #
 # GBase class
@@ -314,12 +341,14 @@ class GFamily(GBase):
 #----------------------------------------------------------------------------------------------------------------------------------
 
 class GPerson(GBase):
-    '''
-    Person  
-    '''
-    def __init__(self,level):
 
-        display(_("Person::Initialize Person at level %d")%(level), level=2, verbose=1 )
+    # -------------------------------------------------------------------------
+    # __init__
+    # -------------------------------------------------------------------------
+
+    def __init__(self, level, purl):
+
+        display(_("Person::Initialize Person %s at level %d")%(purl, level), level=2, verbose=1 )
 
         # Counter
         self.level = level
@@ -334,8 +363,9 @@ class GPerson(GBase):
         self.family = []
 
         # Geneanet
-        self.url = ""
-        self.ref = ""
+        self.ref = clean_ref( purl )
+        self.path = urllib.parse.urljoin(purl, '..')
+        self.url = purl
         
         self.sosa = None
         self.firstname = ""
@@ -346,32 +376,24 @@ class GPerson(GBase):
         self.deathdate = None
         self.deathplace = None
 
-        self.fatherref = None
-        self.motherref = None
+        self.parents = []
 
         self.unions = []
 
-    # -------------------------------------------------------------------------
-    # _clean_ref
-    # -------------------------------------------------------------------------
+        self.siblings = []
 
-    def _clean_ref( self, ref ):
+        self.related = ""
+        self.relation = ""
+        self.notes = ""
+        self.sources = ""
 
-        queries = urllib.parse.parse_qs(urllib.parse.urlparse(ref).query)
-        queries_to_keep = [ 'nz', 'pz', 'm', 'v', 'p', 'n', 'oc' ]
-
-        removed_queries = {k: v for k, v in queries.items() if k not in queries_to_keep + ['lang']}
-        if len(removed_queries) > 0:
-            display( "Removed queries: %s"%(removed_queries) )
-
-        return re.sub( r'^/', '', urllib.parse.urlparse(ref).path ) + "?" + urllib.parse.urlencode({k: v for k, v in queries.items() if k != 'lang'}, doseq=True)
-        return re.sub( r'^/', '', urllib.parse.urlparse(ref).path ) + "?" + urllib.parse.urlencode({k: v for k, v in queries.items() if k in queries_to_keep}, doseq=True)
+        self.scrap_geneanet()
 
     # -------------------------------------------------------------------------
-    # read_geneanet
+    # _read_geneanet
     # -------------------------------------------------------------------------
 
-    def read_geneanet( self, page ):
+    def _read_geneanet( self, page ):
 
         import selenium
         from selenium import webdriver
@@ -381,9 +403,9 @@ class GPerson(GBase):
         queries = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(page).query))
         if 'lang' in queries:
             if queries['lang'] != 'fr':
-                page = page.replace( "&", "&lang=fr" )
+                page = page.replace( "lang=" + queries['lang'], "lang=fr" )
         else:
-            page = page.replace( "lang=" + queries['lang'], "lang=fr" )
+            page = page.replace( "?", "?lang=fr&" )
 
         # contents is an array of tuples
         # each tuple is the name of the bloc and content of the bloc
@@ -432,33 +454,34 @@ class GPerson(GBase):
 
         browser.quit()
 
+        # Wait after a Genanet request to be fair with the site
+        # between 2 and 7 seconds
+        # time.sleep(random.randint(2,7))
+
         return perso, medias, contents
 
     # -------------------------------------------------------------------------
     # scrap_geneanet
     # -------------------------------------------------------------------------
 
-    def scrap_geneanet(self, purl):
+    def scrap_geneanet(self):
 
-        if not purl:
-            return()
-
-        display("Person::scrap_geneanet: %s"%(purl), level=2, verbose=1 )
+        display("Person::scrap_geneanet: %s"%(self.url), level=2, verbose=1 )
 
         # read web page
         
-        perso, medias, sections = self.read_geneanet( purl )
+        perso, medias, sections = self._read_geneanet( self.url )
 
-        tree = html.fromstring(perso.prettify())
+        # tree = html.fromstring(perso.prettify())
 
-        self.url = purl
+        # self.url = purl
         # self.title = tree.xpath('//title/text()')[0]
 
         # -----------------------------------------------------------------
         # ref
         # -----------------------------------------------------------------
         
-        self.ref = self._clean_ref( purl )
+        self.ref = clean_ref( self.url )
 
         for section in sections:
 
@@ -538,19 +561,9 @@ class GPerson(GBase):
             elif 'parents' in section.name.lower():
                 
                 try:
-                    parents = [item for item in section.content.find_all("a") if len( item.find_all("img", {"alt" : "sosa"}) ) == 0]
+                    self.parents = [clean_ref( item['href'] ) for item in section.content.find_all("a") if len( item.find_all("img", {"alt" : "sosa"}) ) == 0]
                 except:
-                    parents = []
-
-                try:
-                    self.fatherref = self._clean_ref( parents[0]['href'] )
-                except:
-                    self.fatherref = None
-
-                try:
-                    self.motherref = self._clean_ref( parents[1]['href'] )
-                except:
-                    self.motherref = None
+                    pass
 
             # -------------------------------------------------------------
             # Union section
@@ -581,7 +594,9 @@ class GPerson(GBase):
 
                         # spouse ref
                         try:
-                            spouseref = self._clean_ref( union.find("a")['href'] )
+                            # first <a> can be a ref to sosa
+                            spouseref = clean_ref( [a for a in union.find_all('a') if a.get_text(strip=True)][0]['href'] )
+                            
                         except:
                             spouseref = None
 
@@ -593,8 +608,8 @@ class GPerson(GBase):
                         childs = []
                         try:
                             for item in union.find("ul").find_all( "li", recursive=False ):
-                                tags_a = item.find_all('a')
-                                childs = childs + [ tags_a[1]['href'] if tags_a[0].find("img") else tags_a[0]['href'] ]
+                                # first <a> can be a ref to sosa
+                                childs = childs + [ clean_ref( [a for a in item.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
                         except:
                             childs = []
 
@@ -604,37 +619,91 @@ class GPerson(GBase):
                     pass
 
             # -------------------------------------------------------------
-            # Union section
-            # -------------------------------------------------------------
-            elif 'union evolue' in section.name.lower():
-                pass
-
-            # -------------------------------------------------------------
-            # Union section
+            # Freres et Soeurs section
             # -------------------------------------------------------------
             elif 'freres et soeurs complet' in section.name.lower():
-                display("Add processing for section: %s"%(section.name))
+                try:
+                    for item in section.content.find("ul").find_all( "li", recursive=False ):
+                        tag_a = item.find('a')
+                        if tag_a.get_text(strip=True): 
+                            # first <a> can be a ref to sosa
+                            self.siblings = self.siblings + [ clean_ref( tag_a['href'] ) ]
+                except:
+                    pass
 
             # -------------------------------------------------------------
-            # Union section
+            # Relation section
+            # -------------------------------------------------------------
+            elif 'relation' in section.name.lower():
+                if len(section.content) > 0:
+                    display("Add processing for section: %s"%(section.name))
+                    self.relation = clean_text( str(section.content) )
+
+            # -------------------------------------------------------------
+            # Related section
             # -------------------------------------------------------------
             elif 'related' in section.name.lower():
-                display("Add processing for section: %s"%(section.name))
+                if len(section.content) > 0:
+                    display("Add processing for section: %s"%(section.name))
+                    self.related = clean_text( str(section.content) )
 
-            elif 'relation' in section.name.lower():
-                display("Add processing for section: %s"%(section.name))
-
+            # -------------------------------------------------------------
+            # Notes section
+            # -------------------------------------------------------------
             elif 'notes' in section.name.lower():
                 if 'timeline' in section.name.lower():
-                    display("Add processing for section: %s"%(section.name))
+                    if len(section.content) > 0:
+                        display("Add processing for section: %s"%(section.name))
+                        self.notes = self.notes + clean_text( str(section.content) )
                 else:
+                    if len(section.content) > 0:
+                        display("Add processing for section: %s"%(section.name))
+                        self.notes = self.notes + clean_text( str(section.content) )
+
+            # -------------------------------------------------------------
+            # Sources section
+            # -------------------------------------------------------------
+            elif 'sources' in section.name.lower():
+                if len(section.content) > 0:
+                    display("Add processing for section: %s"%(section.name))
+                    self.sources = clean_text( str(section.content) )
+
+            # -------------------------------------------------------------
+            # Unprocess section
+            # -------------------------------------------------------------
+            else:
+                if len(section.content) > 0:
                     display("Add processing for section: %s"%(section.name))
 
-            elif 'sources' in section.name.lower():
-                display("Add processing for section: %s"%(section.name))
+    # -------------------------------------------------------------------------
+    # get_parents
+    # -------------------------------------------------------------------------
+    def get_parents( self ):
+        return self.parents
 
-            else:
-                display("Unprocessed section: %s"%(section.name))
+    # -------------------------------------------------------------------------
+    # get_spouses
+    # -------------------------------------------------------------------------
+    def get_spouses( self ):
+        return[ union.spouseref for union in self.unions ]
+
+    # -------------------------------------------------------------------------
+    # get_childs
+    # -------------------------------------------------------------------------
+    def get_childs( self ):
+        return[ union.childsref for union in self.unions ]
+
+    # -------------------------------------------------------------------------
+    # get_siblings
+    # -------------------------------------------------------------------------
+    def get_siblings( self ):
+        return self.siblings
+
+    # -------------------------------------------------------------------------
+    # get_refs
+    # -------------------------------------------------------------------------
+    def get_refs( self ):
+        return self.get_parents() + self.get_spouses() + self.get_childs()
 
     # -------------------------------------------------------------------------
     # add_spouses
@@ -691,7 +760,7 @@ class GPerson(GBase):
     # recurse_parents
     # -------------------------------------------------------------------------
 
-    def recurse_parents(self,level):
+    def recurse_parents(self, level):
         '''
         analyze the parents of the person passed in parameter recursively
         '''
@@ -779,61 +848,22 @@ class GPerson(GBase):
         return
 
 ###################################################################################################################################
-# geneanet_to_gedcom
+# add_persons
 ###################################################################################################################################
 
-def geneanet_to_gedcom(p, level, gid, url):
-    '''
-    Function to create a person from Geneanet into GEDCOM
-    '''
+def add_persons( level, url ):
+    global persons
+    global ROOTURL
+    global LEVEL
 
-    display("geneanet_to_gedcom - Person: %s, Level: %d, GID: %s, url: %s"%(p, level, gid, url), level=2, verbose=1 )
-
-    # Create the Person coming from Geneanet
-    if not p:
-        p = GPerson(level)
-
-    p.scrap_geneanet(url)
-
-    display( vars(p), title="geneanet_to_gedcom - Person %s"%(p.ref) )
-
-    return(p)
-
-    # Filling the Person from GEDCOM
-    # Done after so we can try to find it in Gramps with the Geneanet data
-    # p.from_gedcom(gid)
-
-    # Check we point to the same person
-    gid = None
-    if gid != None:
-        if (p.firstname != p.g_firstname or p.lastname != p.g_lastname) and (not force):
-            print(_("GEDCOM person  : %s %s")%(p.firstname,p.lastname))
-            print(_("Geneanet person: %s %s")%(p.g_firstname,p.g_lastname))
-            sys.exit(_("Do not continue without force"))
-
-        # Fix potential empty dates
-        if p.g_birthdate == "":
-            p.g_birthdate = None
-        if p.birthdate == "":
-            p.birthdate = None
-        if p.g_deathdate == "":
-            p.g_deathdate = None
-        if p.deathdate == "":
-            p.deathdate = None
-
-        if p.birthdate == p.g_birthdate or p.deathdate == p.g_deathdate or force:
-            pass
-        else:
-            print(_("GEDCOM person birth/death  : %s / %s")%(p.birthdate,p.deathdate))
-            print(_("Geneanet person birth/death: %s / %s")%(p.g_birthdate,p.g_deathdate))
-            sys.exit(_("Do not continue without force"))
-
-    # Copy from Geneanet into GEDCOM and commit
-    p.to_gedcom()
-
-    display( vars(p), title="geneanet_to_gedcom - Person [ %s ] %s"%(p.gid, p.ref) )
-
-    return(p)
+    ref = clean_ref( url )
+    if ref not in persons:
+        person = GPerson( level, urllib.parse.urljoin(ROOTURL, ref))
+        persons[person.ref] = person
+        related = person.get_refs()
+        for person in related:
+            if level < LEVEL:
+                add_persons( level + 1, person )
 
 ###################################################################################################################################
 # main
@@ -850,6 +880,7 @@ def main():
     global descendants
     global spouses
     global LEVEL
+    global ROOTURL
     global translation
     global locale
     global _
@@ -901,17 +932,31 @@ def main():
 
     # Create the first Person
 
-    gp = geneanet_to_gedcom(None, 0, None, purl)
+    ROOTURL = urllib.parse.urljoin(purl, '..')
+    LEVEL = 3
 
-    exit(0)
+    add_persons( 0, purl )
 
-    if gp != None:
+    key, value = next(iter(persons.items()), None)
+    display( vars(value), title=key )
+
+    display( persons, title="Persons" )
+
+    exit()
+
+    if souche != None:
         if ascendants:
-            gp.recurse_parents(0)
+            souche.recurse_parents(0)
+
+    display( Persons, title="Persons" )
+
+    if souche != None:
+        if ascendants:
+            souche.recurse_parents(0)
 
         fam = []
         if spouses:
-            fam = gp.add_spouses(0)
+            fam = souche.add_spouses(0)
         else:
             # TODO: If we don't ask for spouses, we won't get children at all
             pass
@@ -919,9 +964,6 @@ def main():
         if descendants:
             for f in fam:
                 f.recurse_children(0)
-
-    # Write GEDCOM file
-    # gedcom.save(gname)
 
     sys.exit(0)
 
