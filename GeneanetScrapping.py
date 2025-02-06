@@ -569,7 +569,7 @@ class GPerson(GBase):
             # Union section
             # -------------------------------------------------------------
             elif 'union' in section.name.lower():
-                Union = namedtuple("Marriage", "spouseref date place divorce childs")
+                Union = namedtuple("Marriage", "spouseref date place divorce childsref")
 
                 try:
                     unions = section.content.find('ul', class_=re.compile('.*fiche_union.*') ).find_all( "li", recursive=False )
@@ -605,15 +605,15 @@ class GPerson(GBase):
                         display("Add divorce processing")
 
                         # childs
-                        childs = []
+                        childsref = []
                         try:
                             for item in union.find("ul").find_all( "li", recursive=False ):
                                 # first <a> can be a ref to sosa
-                                childs = childs + [ clean_ref( [a for a in item.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
+                                childsref = childsref + [ clean_ref( [a for a in item.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
                         except:
-                            childs = []
+                            childsref = []
 
-                        self.unions = self.unions + [Union( spouseref, marriagedate, marriageplace, divorcedate, childs)]
+                        self.unions = self.unions + [Union( spouseref, marriagedate, marriageplace, divorcedate, childsref)]
 
                 except:
                     pass
