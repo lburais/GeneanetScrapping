@@ -531,7 +531,7 @@ class GPerson(GBase):
                 try:
                     self.birthplace = str(birth.split(' - ')[1])
                 except:
-                    if len(birth) < 1:
+                    if len(birthplace) < 1:
                         pass
                     else:
                         self.birthplace = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
@@ -550,7 +550,7 @@ class GPerson(GBase):
                 try:
                     self.deathplace = re.split(f"{re.escape(",\nà l'âge")}|{re.escape(", à l'âge")}", str(death.split(' - ')[1]))[0]
                 except:
-                    if len(death) < 1:
+                    if len(deathplace) < 1:
                         pass
                     else:
                         self.deathplace = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
