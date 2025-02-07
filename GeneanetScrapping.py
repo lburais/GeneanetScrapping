@@ -25,6 +25,7 @@ import time
 import io
 import sys
 import re
+import uuid
 import random
 import argparse
 import urllib
@@ -282,58 +283,6 @@ class GBase:
     def __init__(self):
         pass
 
-#-------------------------------------------------------------------------
-#
-# GFamily class
-#
-#-------------------------------------------------------------------------
-# title
-#
-# marriagedate
-# marriageplace
-# marriageplacecode
-#
-# gid
-#
-# family
-#
-# childref
-#
-# url
-#
-# father
-# mother
-
-class GFamily(GBase):
-    '''
-    Family as seen by Geneanet
-    '''
-    def __init__(self, father, mother):
-
-        display(_("GFamily::Creating family: %s %s - %s %s")%(father.firstname, father.lastname, mother.firstname, mother.lastname), level=2, verbose=1 )
-
-        # The 2 GPersons parents in this family should exist
-        # and properties filled before we create the family
-
-        self.title = ""
-
-        self.marriagedate = None
-        self.marriageplace = None
-        self.marriageplacecode = None
-        
-        self.gid = None
-
-        self.family = None
-
-        self.childref = []
-
-        self.url = father.url
-        if self.url == "":
-            self.url = mother.url
-        # TODO: what if father or mother is None
-        self.father = father
-        self.mother = mother
-
 #----------------------------------------------------------------------------------------------------------------------------------
 #
 # GPerson class
@@ -345,13 +294,12 @@ class GPerson(GBase):
     # -------------------------------------------------------------------------
     # __init__
     # -------------------------------------------------------------------------
+    # url : geneanet url
+    # person : calling GPerson
 
-    def __init__(self, level, purl):
+    def __init__(self, url):
 
-        display(_("Person::Initialize Person %s at level %d")%(purl, level), level=2, verbose=1 )
-
-        # Counter
-        self.level = level
+        display(_("Person %s")%(url), level=2 )
 
         # Father and Mother and Spouses GPersons
         self.father = None
@@ -363,9 +311,9 @@ class GPerson(GBase):
         self.family = []
 
         # Geneanet
-        self.ref = clean_ref( purl )
-        self.path = urllib.parse.urljoin(purl, '..')
-        self.url = purl
+        self.ref = clean_ref( url )
+        self.path = urllib.parse.urljoin(url, '..')
+        self.url = url
         
         self.sosa = None
         self.firstname = ""
@@ -397,6 +345,10 @@ class GPerson(GBase):
 
         import selenium
         from selenium import webdriver
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        from selenium.webdriver.common.action_chains import ActionChains
 
         # force fr language
 
@@ -417,6 +369,33 @@ class GPerson(GBase):
 
         browser = webdriver.Safari()
         browser.get(page)
+        browser.maximize_window()
+        
+        try:
+            WebDriverWait(browser, 10).until(
+                EC.presence_of_all_elements_located((By.XPATH, '//*[@id="tarteaucitronAllAllowed" or @id="tarteaucitronPersonalize2"]'))
+            )
+
+            try:
+                actions = ActionChains(browser)
+                button = browser.find_element(By.ID, 'tarteaucitronAllAllowed')
+                actions.move_to_element(button).click().perform()
+                print("Button 1 clicked successfully!")
+            except:
+                pass
+
+            try:
+                actions = ActionChains(browser)
+                button = browser.find_element(By.ID, 'tarteaucitronPersonalize2')
+                actions.move_to_element(button).click().perform()
+                print("Button 2 clicked successfully!")
+            except:
+                pass
+        except:
+            pass
+
+        screenshot_path = "screenshots/" + clean_ref( page ).replace('?','.').replace('=','_').replace('&','.') + ".png"
+        browser.get_screenshot_as_file(screenshot_path)
 
         try:
             # Focus on perso bloc
@@ -454,10 +433,6 @@ class GPerson(GBase):
 
         browser.quit()
 
-        # Wait after a Genanet request to be fair with the site
-        # between 2 and 7 seconds
-        # time.sleep(random.randint(2,7))
-
         return perso, medias, contents
 
     # -------------------------------------------------------------------------
@@ -466,22 +441,9 @@ class GPerson(GBase):
 
     def scrap_geneanet(self):
 
-        display("Person::scrap_geneanet: %s"%(self.url), level=2, verbose=1 )
-
         # read web page
         
         perso, medias, sections = self._read_geneanet( self.url )
-
-        # tree = html.fromstring(perso.prettify())
-
-        # self.url = purl
-        # self.title = tree.xpath('//title/text()')[0]
-
-        # -----------------------------------------------------------------
-        # ref
-        # -----------------------------------------------------------------
-        
-        self.ref = clean_ref( self.url )
 
         for section in sections:
 
@@ -531,7 +493,7 @@ class GPerson(GBase):
                 try:
                     self.birthplace = str(birth.split(' - ')[1])
                 except:
-                    if len(birthplace) < 1:
+                    if len(birth) < 1:
                         pass
                     else:
                         self.birthplace = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
@@ -550,7 +512,7 @@ class GPerson(GBase):
                 try:
                     self.deathplace = re.split(f"{re.escape(",\nà l'âge")}|{re.escape(", à l'âge")}", str(death.split(' - ')[1]))[0]
                 except:
-                    if len(deathplace) < 1:
+                    if len(death ) < 1:
                         pass
                     else:
                         self.deathplace = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
@@ -705,147 +667,31 @@ class GPerson(GBase):
     def get_refs( self ):
         return self.get_parents() + self.get_spouses() + self.get_childs()
 
-    # -------------------------------------------------------------------------
-    # add_spouses
-    # -------------------------------------------------------------------------
-
-    def add_spouses(self,level):
-        '''
-        Add all spouses for this person, with corresponding families
-        returns all the families created in a list
-        '''
-
-        display("GPerson::add_spouses", level=2, verbose=1 )
-
-        i = 0
-        ret = []
-        while i < len(self.spouseref):
-            spouse = None
-            # Avoid handling already processed spouses
-            for s in self.spouse:
-                if s.url == self.spouseref[i]:
-                    spouse = s
-                    break
-
-            if not spouse:
-                spouse = geneanet_to_gedcom(None, level, None, ROOTURL+self.spouseref[i])
-
-                if spouse:
-                    self.spouse.append(spouse)
-                    spouse.spouse.append(self)
-
-                    # Create a GFamily 
-                    display("=> Initialize Family of %s %s - %s %s"%(self.firstname,self.lastname,spouse.firstname,spouse.lastname), verbose=1)
-
-                if self.sex == 'M':
-                    f = GFamily(self, spouse)
-                elif self.sex == 'F':
-                    f = GFamily(spouse, self)
-                else:
-                    display("Unable to Initialize Family of "+self.firstname+" "+self.lastname+" sex unknown", verbose=1)
-                    break
-
-                # f.from_geneanet()
-                # f.from_gedcom(f.gid)
-                # f.to_gedcom()
-
-                self.family.append(f)
-                if spouse:
-                    spouse.family.append(f)
-                ret.append(f)
-            i = i + 1
-        return(ret)
+class GPersons(GBase):
 
     # -------------------------------------------------------------------------
-    # recurse_parents
+    # __init__
     # -------------------------------------------------------------------------
 
-    def recurse_parents(self, level):
-        '''
-        analyze the parents of the person passed in parameter recursively
-        '''
+    def __init__(self):
 
-        display("GPerson::recurse_parents", level=2, verbose=1 )
+        display(_("Persons"), level=2 )
 
-        loop = False
-        # Recurse while we have parents urls and level not reached
-        if level <= LEVEL and (self.fatherref != "" or self.motherref != ""):
-            loop = True
-            level = level + 1
+        self.persons = {}
 
-            if self.father:
-                geneanet_to_gedcom(self.father, level, self.father.gid, self.fatherref)
-                if self.mother:
-                    self.mother.spouse.append(self.father)
-
-                if verbosity >= 2:
-                    print("=> Recursing on the parents of "+self.father.firstname+" "+self.father.lastname)
-                self.father.recurse_parents(level)
-
-                if verbosity >= 2:
-                    print("=> End of recursion on the parents of "+self.father.firstname+" "+self.father.lastname)
-
-            if self.mother:
-                geneanet_to_gedcom(self.mother, level, self.mother.gid, self.motherref)
-                if self.father:
-                    self.father.spouse.append(self.mother)
-                if verbosity >= 2:
-                    print("=> Recursing on the mother of "+self.mother.firstname+" "+self.mother.lastname)
-                self.mother.recurse_parents(level)
-
-                if verbosity >= 2:
-                    print("=> End of recursing on the mother of "+self.mother.firstname+" "+self.mother.lastname)
-
-            # Create a GFamily
-            if verbosity >= 2:
-                print("=> Initialize Parents Family of "+self.firstname+" "+self.lastname)
-
-            f = GFamily(self.father, self.mother)
-            # f.from_geneanet()
-            # f.from_gedcom(f.gid)
-            # f.to_gedcom()
-
-            if self.father:
-                self.father.family.append(f)
-            if self.mother:
-                self.mother.family.append(f)
-
-            # Deal with other spouses
-            if spouses:
-                fam = self.father.add_spouses(level)
-                if ascendants:
-                    for ff in fam:
-                        if ff.gid != f.gid:
-                            ff.mother.recurse_parents(level)
-                if descendants:
-                    for ff in fam:
-                        if ff.gid != f.gid:
-                            ff.recurse_children(level)
-                fam = self.mother.add_spouses(level)
-                if ascendants:
-                    for mf in fam:
-                        if mf.gid != f.gid:
-                            mf.father.recurse_parents(level)
-                if descendants:
-                    for mf in fam:
-                        if mf.gid != f.gid:
-                            mf.recurse_children(level)
+    # -------------------------------------------------------------------------
+    # add_person
+    # -------------------------------------------------------------------------
 
 
-            # Now do what is needed depending on options
-            if descendants:
-                f.recurse_children(level)
-            else:
-                f.add_child(self)
+    def add_person( self, url ):
 
-        if not loop:
-            if level > LEVEL:
-                if verbosity >= 2:
-                    print("Stopping exploration as we reached level "+str(level))
-            else:
-                if verbosity >= 1:
-                    print("Stopping exploration as there are no more parents")
-        return
+        ref = clean_ref( url )
+        if ref not in self.persons:
+            self.persons[ref] = GPerson( url )
+
+            display( vars(self.persons[ref]), title=ref )
+
 
 ###################################################################################################################################
 # add_persons
@@ -858,12 +704,14 @@ def add_persons( level, url ):
 
     ref = clean_ref( url )
     if ref not in persons:
-        person = GPerson( level, urllib.parse.urljoin(ROOTURL, ref))
-        persons[person.ref] = person
-        related = person.get_refs()
-        for person in related:
+        new_person = GPerson( urllib.parse.urljoin(ROOTURL, ref), None)
+        persons[new_person.ref] = new_person
+        related = new_person.get_refs()
+        for ref in related:
+            if isinstance( ref, list):
+                print(ref)
             if level < LEVEL:
-                add_persons( level + 1, person )
+                add_persons( level + 1, ref )
 
 ###################################################################################################################################
 # main
@@ -935,9 +783,11 @@ def main():
     ROOTURL = urllib.parse.urljoin(purl, '..')
     LEVEL = 3
 
-    add_persons( 0, purl )
+    persons = GPersons()
+    persons.add_person( purl )
 
-    key, value = next(iter(persons.items()), None)
+    persons.persons
+    key, value = next(iter(persons.persons.items()))
     display( vars(value), title=key )
 
     display( persons, title="Persons" )
