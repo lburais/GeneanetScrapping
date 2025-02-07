@@ -350,6 +350,10 @@ class GPerson(GBase):
         from selenium.webdriver.support import expected_conditions as EC
         from selenium.webdriver.common.action_chains import ActionChains
 
+        # add 
+        if urllib.parse.urlsplit(page).scheme == '':
+            page = ROOTURL + page
+             
         # force fr language
 
         queries = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(page).query))
@@ -370,7 +374,7 @@ class GPerson(GBase):
         browser = webdriver.Safari()
         browser.get(page)
         browser.maximize_window()
-        
+
         try:
             WebDriverWait(browser, 10).until(
                 EC.presence_of_all_elements_located((By.XPATH, '//*[@id="tarteaucitronAllAllowed" or @id="tarteaucitronPersonalize2"]'))
@@ -380,7 +384,6 @@ class GPerson(GBase):
                 actions = ActionChains(browser)
                 button = browser.find_element(By.ID, 'tarteaucitronAllAllowed')
                 actions.move_to_element(button).click().perform()
-                print("Button 1 clicked successfully!")
             except:
                 pass
 
@@ -388,7 +391,6 @@ class GPerson(GBase):
                 actions = ActionChains(browser)
                 button = browser.find_element(By.ID, 'tarteaucitronPersonalize2')
                 actions.move_to_element(button).click().perform()
-                print("Button 2 clicked successfully!")
             except:
                 pass
         except:
@@ -692,26 +694,9 @@ class GPersons(GBase):
 
             display( vars(self.persons[ref]), title=ref )
 
+            for parent in self.persons[ref].parents:
+                self.add_person( parent )
 
-###################################################################################################################################
-# add_persons
-###################################################################################################################################
-
-def add_persons( level, url ):
-    global persons
-    global ROOTURL
-    global LEVEL
-
-    ref = clean_ref( url )
-    if ref not in persons:
-        new_person = GPerson( urllib.parse.urljoin(ROOTURL, ref), None)
-        persons[new_person.ref] = new_person
-        related = new_person.get_refs()
-        for ref in related:
-            if isinstance( ref, list):
-                print(ref)
-            if level < LEVEL:
-                add_persons( level + 1, ref )
 
 ###################################################################################################################################
 # main
