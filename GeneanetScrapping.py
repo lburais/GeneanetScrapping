@@ -144,6 +144,15 @@ _ = translation.gettext
 from bs4 import BeautifulSoup
 from bs4 import Comment, NavigableString
 
+import selenium
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+
+import requests
+
 #-------------------------------------------------------------------------
 #
 # Other Python Modules
@@ -250,7 +259,7 @@ def convert_date(datetab):
 def clean_ref( ref ):
 
     queries = urllib.parse.parse_qs(urllib.parse.urlparse(ref).query)
-    queries_to_keep = [ 'nz', 'pz', 'm', 'v', 'p', 'n', 'oc' ]
+    queries_to_keep = [ 'nz', 'pz', 'm', 'v', 'p', 'n', 'oc', 'i' ]
 
     removed_queries = {k: v for k, v in queries.items() if k not in queries_to_keep + ['lang']}
     if len(removed_queries) > 0:
@@ -271,6 +280,12 @@ def clean_text( html, md = True, links = False, images = False, emphasis = False
         return converter.handle( html )
     else:
         return markdown.markdown( converter.handle( html ) )
+
+def encode_url( url ):
+    return clean_ref( url ).replace('?','#').replace('=','_').replace('&','.')
+
+def decode_url( url ):
+    return clean_ref( url ).replace('#','?').replace('_','=').replace('.','&')
 
 #-------------------------------------------------------------------------
 #
@@ -297,44 +312,38 @@ class GPerson(GBase):
     # url : geneanet url
     # person : calling GPerson
 
-    def __init__(self, url):
+    def __init__(self, url, code):
 
         display(_("Person %s")%(url), level=2 )
 
-        # Father and Mother and Spouses GPersons
-        self.father = None
-        self.mother = None
-        self.spouse = []
-        self.child = []
-
-        # GFamilies
-        self.family = []
-
         # Geneanet
-        self.ref = clean_ref( url )
-        self.path = urllib.parse.urljoin(url, '..')
-        self.url = url
+        self._code = code
+        self._url = url
+        #self.path = urllib.parse.urljoin(url, '..')
+        self._ref = clean_ref( url )
         
-        self.sosa = None
-        self.firstname = ""
-        self.lastname = ""
-        self.sex = 'U'
-        self.birthdate = None
-        self.birthplace = None
-        self.deathdate = None
-        self.deathplace = None
+        self._portrait = {
+            'sosa' : None,
+            'firstname' : "",
+            'lastname' : "",
+            'sex' : "U",
+            'birthdate' : None,
+            'birthplace' : "",
+            'deathdate' : None,
+            'deathplace' : ""
+        }
 
-        self.parents = []
+        self._parentsref = []
 
-        self.unions = []
+        self._unions = []
 
-        self.siblings = []
+        self._siblingsref = []
 
-        self.related = ""
-        self.relation = ""
-        self.notes = ""
-        self.sources = ""
+        self._medias = []
 
+        self._notes = ""
+
+        # scrap geneanet page
         self.scrap_geneanet()
 
     # -------------------------------------------------------------------------
@@ -342,13 +351,6 @@ class GPerson(GBase):
     # -------------------------------------------------------------------------
 
     def _read_geneanet( self, page ):
-
-        import selenium
-        from selenium import webdriver
-        from selenium.webdriver.common.by import By
-        from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.support import expected_conditions as EC
-        from selenium.webdriver.common.action_chains import ActionChains
 
         # add 
         if urllib.parse.urlsplit(page).scheme == '':
@@ -376,27 +378,14 @@ class GPerson(GBase):
         browser.maximize_window()
 
         try:
-            WebDriverWait(browser, 10).until(
-                EC.presence_of_all_elements_located((By.XPATH, '//*[@id="tarteaucitronAllAllowed" or @id="tarteaucitronPersonalize2"]'))
+            consent_button = WebDriverWait(browser, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
             )
-
-            try:
-                actions = ActionChains(browser)
-                button = browser.find_element(By.ID, 'tarteaucitronAllAllowed')
-                actions.move_to_element(button).click().perform()
-            except:
-                pass
-
-            try:
-                actions = ActionChains(browser)
-                button = browser.find_element(By.ID, 'tarteaucitronPersonalize2')
-                actions.move_to_element(button).click().perform()
-            except:
-                pass
+            ActionChains(browser).move_to_element(consent_button).click().perform()
         except:
             pass
 
-        screenshot_path = "screenshots/" + clean_ref( page ).replace('?','.').replace('=','_').replace('&','.') + ".png"
+        screenshot_path = "screenshots/" + encode_url( page ) + ".png"
         browser.get_screenshot_as_file(screenshot_path)
 
         try:
@@ -407,7 +396,8 @@ class GPerson(GBase):
 
             # extract the medias
 
-            medias = perso.find_all("img", attrs={"ng-src": re.compile(r".*")} )
+            images = perso.find_all("img", attrs={"ng-src": re.compile(r".*")} )
+            print( images )
 
             # extract the geneanet sections
 
@@ -433,6 +423,31 @@ class GPerson(GBase):
             print( message )
             pass
 
+        # process the medias
+
+        medias = []
+        current_window = browser.current_window_handle
+
+        images = browser.find_elements(By.CSS_SELECTOR, "img[ng-click='mediasCtrl.mediaClick(media)']")
+        for image in images:
+            try:
+                browser.switch_to.window(current_window)
+                current_windows = browser.window_handles
+                print( image )
+                print( 'click' )
+                image.click()
+                print( 'clicked' )
+                time.sleep(2)  # Wait for the new window/tab to open
+                all_windows = browser.window_handles
+
+                for window in all_windows:
+                    if window not in current_windows:
+                        browser.switch_to.window(window)
+                        imagesoup = BeautifulSoup(browser.page_source, 'html.parser')
+                        break
+            except:
+                print( 'failed action')
+
         browser.quit()
 
         return perso, medias, contents
@@ -445,7 +460,7 @@ class GPerson(GBase):
 
         # read web page
         
-        perso, medias, sections = self._read_geneanet( self.url )
+        perso, medias, sections = self._read_geneanet( self._url )
 
         for section in sections:
 
@@ -456,9 +471,8 @@ class GPerson(GBase):
 
                 # sosa
                 try:
-                    sosa = section.content.find("em", {"class" : "sosa"}).find_all("a")
-
-                    self.sosa = int(sosa[0].get_text().replace('\xa0', ''))
+                    sosa = int(section.content.find("em", {"class" : "sosa"}).find_all("a")[0].get_text().replace('\xa0', ''))
+                    self._portrait['sosa'] = sosa
                 except:
                     pass
 
@@ -466,8 +480,8 @@ class GPerson(GBase):
                 try:
                     names = section.content.find("div", {"id" : "person-title"}).find_all_next("a")
 
-                    self.firstname = names[0].get_text().title()
-                    self.lastname = names[1].get_text().title()
+                    self._portrait['firstname'] = names[0].get_text().title()
+                    self._portrait['lastname'] = names[1].get_text().title()
                 except:
                     pass
 
@@ -475,11 +489,11 @@ class GPerson(GBase):
                 try:
                     sex = section.content.find("div", {"id" : "person-title"}).find_all_next("img", alt=True)
 
-                    self.sex = sex[0]['alt']
-                    if sex[0] == 'H':
-                        self.sex = 'M'
+                    self._portrait['sex'] = sex[0]['alt']
+                    if self._portrait['sex'] == 'H':
+                        self._portrait['sex'] = 'M'
                 except:
-                    self.sex = 'U'
+                    self._portrait['sex'] = 'U'
 
                 # birth
                 try:
@@ -488,17 +502,18 @@ class GPerson(GBase):
                     birth = ""
 
                 try:
-                    self.birthdate = format_ca( convert_date(birth.split('-')[0].split()[1:]) )
+                    self._portrait['birthdate'] = format_ca( convert_date(birth.split('-')[0].split()[1:]) )
                 except:
-                    self.birthdate = None
+                    pass
 
                 try:
-                    self.birthplace = str(birth.split(' - ')[1])
+                    self._portrait['birthplace'] = str(birth.split(' - ')[1])
+                    self._portrait['birthplace'] = ",".join( item.strip() for item in self._portrait['birthplace'].split(",") )
                 except:
                     if len(birth) < 1:
                         pass
                     else:
-                        self.birthplace = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
+                        self._portrait['birthplace'] = str(uuid.uuid3(uuid.NAMESPACE_URL, self._url))
 
                 # death
                 try:
@@ -507,17 +522,18 @@ class GPerson(GBase):
                     death = ""
 
                 try:
-                    self.deathdate = format_ca( convert_date(death.split('-')[0].split()[1:]) )
+                    self._portrait['deathdate'] = format_ca( convert_date(death.split('-')[0].split()[1:]) )
                 except:
-                    self.deathdate = None
+                    pass
 
                 try:
-                    self.deathplace = re.split(f"{re.escape(",\nà l'âge")}|{re.escape(", à l'âge")}", str(death.split(' - ')[1]))[0]
+                    self._portrait['deathplace'] = re.split(f"{re.escape(",\nà l'âge")}|{re.escape(", à l'âge")}", str(death.split(' - ')[1]))[0]
+                    self._portrait['deathplace'] = ",".join( item.strip() for item in self._portrait['deathplace'].split(",") )
                 except:
                     if len(death ) < 1:
                         pass
                     else:
-                        self.deathplace = str(uuid.uuid3(uuid.NAMESPACE_URL, self.url))
+                        self._portrait['deathplace'] = str(uuid.uuid3(uuid.NAMESPACE_URL, self._url))
 
             # -------------------------------------------------------------
             # Parents section
@@ -525,7 +541,7 @@ class GPerson(GBase):
             elif 'parents' in section.name.lower():
                 
                 try:
-                    self.parents = [clean_ref( item['href'] ) for item in section.content.find_all("a") if len( item.find_all("img", {"alt" : "sosa"}) ) == 0]
+                    self._parentsref = [clean_ref( item['href'] ) for item in section.content.find_all("a") if len( item.find_all("img", {"alt" : "sosa"}) ) == 0]
                 except:
                     pass
 
@@ -536,9 +552,9 @@ class GPerson(GBase):
                 Union = namedtuple("Marriage", "spouseref date place divorce childsref")
 
                 try:
-                    unions = section.content.find('ul', class_=re.compile('.*fiche_union.*') ).find_all( "li", recursive=False )
+                    _unions = section.content.find('ul', class_=re.compile('.*fiche_union.*') ).find_all( "li", recursive=False )
 
-                    for union in unions:
+                    for union in _unions:
                         try:
                             marriage = union.find("em").get_text()
                         except:
@@ -552,7 +568,8 @@ class GPerson(GBase):
 
                         # marriage place
                         try:
-                            marriageplace = ', '.join([x for x in marriage.strip().split(',')[1:] if x]).strip()                           
+                            marriageplace = ', '.join([x for x in marriage.strip().split(',')[1:] if x]).strip()
+                            marriageplace = ",".join( item.strip() for item in marriageplace.split(",") )
                         except:
                             marriageplace = None
 
@@ -577,7 +594,7 @@ class GPerson(GBase):
                         except:
                             childsref = []
 
-                        self.unions = self.unions + [Union( spouseref, marriagedate, marriageplace, divorcedate, childsref)]
+                        self._unions = self._unions + [Union( spouseref, marriagedate, marriageplace, divorcedate, childsref)]
 
                 except:
                     pass
@@ -591,7 +608,7 @@ class GPerson(GBase):
                         tag_a = item.find('a')
                         if tag_a.get_text(strip=True): 
                             # first <a> can be a ref to sosa
-                            self.siblings = self.siblings + [ clean_ref( tag_a['href'] ) ]
+                            self._siblingsref = self._siblingsref + [ clean_ref( tag_a['href'] ) ]
                 except:
                     pass
 
@@ -601,7 +618,7 @@ class GPerson(GBase):
             elif 'relation' in section.name.lower():
                 if len(section.content) > 0:
                     display("Add processing for section: %s"%(section.name))
-                    self.relation = clean_text( str(section.content) )
+                    self._notes = self._notes + clean_text( str(section.content) )
 
             # -------------------------------------------------------------
             # Related section
@@ -609,7 +626,7 @@ class GPerson(GBase):
             elif 'related' in section.name.lower():
                 if len(section.content) > 0:
                     display("Add processing for section: %s"%(section.name))
-                    self.related = clean_text( str(section.content) )
+                    self._notes = self._notes + clean_text( str(section.content) )
 
             # -------------------------------------------------------------
             # Notes section
@@ -618,19 +635,22 @@ class GPerson(GBase):
                 if 'timeline' in section.name.lower():
                     if len(section.content) > 0:
                         display("Add processing for section: %s"%(section.name))
-                        self.notes = self.notes + clean_text( str(section.content) )
+                        self._notes = self._notes + clean_text( str(section.content) )
                 else:
                     if len(section.content) > 0:
                         display("Add processing for section: %s"%(section.name))
-                        self.notes = self.notes + clean_text( str(section.content) )
+                        self._notes = self._notes + clean_text( str(section.content) )
 
             # -------------------------------------------------------------
             # Sources section
             # -------------------------------------------------------------
             elif 'sources' in section.name.lower():
                 if len(section.content) > 0:
-                    display("Add processing for section: %s"%(section.name))
-                    self.sources = clean_text( str(section.content) )
+                    try:
+                        display("Add processing for section: %s"%(section.name))
+                        self._notes = self._notes +  clean_text( section.content.find( "div", {"ng-non-bindable" : ""} ).decode_contents() )
+                    except:
+                        pass
 
             # -------------------------------------------------------------
             # Unprocess section
@@ -639,35 +659,77 @@ class GPerson(GBase):
                 if len(section.content) > 0:
                     display("Add processing for section: %s"%(section.name))
 
-    # -------------------------------------------------------------------------
-    # get_parents
-    # -------------------------------------------------------------------------
-    def get_parents( self ):
-        return self.parents
+        # -------------------------------------------------------------
+        # Medias
+        # -------------------------------------------------------------
+        
+        if len(medias) > 0:
+
+            display("Add medias processing")
+            display( medias )
+            for media in medias:
+                try:
+                    # Get the 'src' attribute of the image
+                    image_url = media.attrs['src']
+                    image_alt = media.attrs['alt']
+
+                    # Download the image using requests
+                    response = requests.get(urllib.parse.urljoin(ROOTURL, image_url))
+
+                    # Save the image to a file
+                    image_dir = os.path.join("images", encode_url( self._ref ))
+                    os.makedirs(image_dir, exist_ok=True)
+                    image_filename = os.path.join(image_dir, image_alt + "_" + os.path.basename(image_url))
+                    with open(image_filename, 'wb') as f:
+                        try:
+                            f.write(response.content)
+                        except:
+                            pass
+                        f.close()
+                except:
+                    pass
 
     # -------------------------------------------------------------------------
-    # get_spouses
+    # code
     # -------------------------------------------------------------------------
-    def get_spouses( self ):
-        return[ union.spouseref for union in self.unions ]
+    @property
+    def code(self):
+        return self._code
 
     # -------------------------------------------------------------------------
-    # get_childs
+    # portrait
     # -------------------------------------------------------------------------
-    def get_childs( self ):
-        return[ union.childsref for union in self.unions ]
+    @property
+    def portrait(self):
+        return self._portrait
 
     # -------------------------------------------------------------------------
-    # get_siblings
+    # parentsref
     # -------------------------------------------------------------------------
-    def get_siblings( self ):
-        return self.siblings
+    @property
+    def parentsref(self):
+        return self._parentsref
 
     # -------------------------------------------------------------------------
-    # get_refs
+    # spousesref
     # -------------------------------------------------------------------------
-    def get_refs( self ):
-        return self.get_parents() + self.get_spouses() + self.get_childs()
+    @property
+    def spousesref(self):
+        return [ union.spouseref for union in self._unions ]
+
+    # -------------------------------------------------------------------------
+    # childsref
+    # -------------------------------------------------------------------------
+    @property
+    def childsref(self):
+        return [item for sublist in [ union.childsref for union in self._unions ] for item in sublist]
+
+    # -------------------------------------------------------------------------
+    # siblingsref
+    # -------------------------------------------------------------------------
+    @property
+    def siblingsref(self):
+        return self._siblingsref
 
 class GPersons(GBase):
 
@@ -675,28 +737,48 @@ class GPersons(GBase):
     # __init__
     # -------------------------------------------------------------------------
 
-    def __init__(self):
+    def __init__(self, max_level, ascendants, spouses, descendants ):
 
         display(_("Persons"), level=2 )
 
-        self.persons = {}
+        self._persons = {}
+        self._max_level = max_level
+        self._ascendants = ascendants
+        self._spouses = spouses
+        self._descendants = descendants
 
     # -------------------------------------------------------------------------
     # add_person
     # -------------------------------------------------------------------------
 
-
-    def add_person( self, url ):
+    def add_person( self, url, level = 0, code = '0'  ):
 
         ref = clean_ref( url )
-        if ref not in self.persons:
-            self.persons[ref] = GPerson( url )
+        if ref not in self._persons:
+            self._persons[ref] = GPerson( url, code )
 
-            display( vars(self.persons[ref]), title=ref )
+            display( vars(self._persons[ref]), title=ref )
 
-            for parent in self.persons[ref].parents:
-                self.add_person( parent )
+            if level < self._max_level:
 
+                if self._ascendants:
+                    for parent in self._persons[ref].parentsref:
+                        self.add_person( parent, level+1, "%s%s%d"%(code, "p", len(self._persons)) )
+
+                if self._spouses:
+                    for spouse in self._persons[ref].spousesref:
+                        self.add_person( spouse, level+1, "%s%s%d"%(code, "s", len(self._persons)) )
+
+                if self._descendants:
+                    for child in self._persons[ref].childsref:
+                        self.add_person( child, level+1, "%s%s%d"%(code, "c", len(self._persons)) )
+
+    # -------------------------------------------------------------------------
+    # print
+    # -------------------------------------------------------------------------
+
+    def print( self ):
+        display( self._persons, title="%d Persons"%(len(self._persons)) )
 
 ###################################################################################################################################
 # main
@@ -767,41 +849,16 @@ def main():
 
     ROOTURL = urllib.parse.urljoin(purl, '..')
     LEVEL = 3
+    ascendants = True
+    descendants = True
+    spouses = True
 
-    persons = GPersons()
+    persons = GPersons( LEVEL, ascendants, spouses, descendants )
     persons.add_person( purl )
 
-    persons.persons
-    key, value = next(iter(persons.persons.items()))
-    display( vars(value), title=key )
-
-    display( persons, title="Persons" )
-
-    exit()
-
-    if souche != None:
-        if ascendants:
-            souche.recurse_parents(0)
-
-    display( Persons, title="Persons" )
-
-    if souche != None:
-        if ascendants:
-            souche.recurse_parents(0)
-
-        fam = []
-        if spouses:
-            fam = souche.add_spouses(0)
-        else:
-            # TODO: If we don't ask for spouses, we won't get children at all
-            pass
-
-        if descendants:
-            for f in fam:
-                f.recurse_children(0)
+    persons.print()
 
     sys.exit(0)
-
 
 if __name__ == '__main__':
     main()
