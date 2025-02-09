@@ -423,7 +423,7 @@ class GPerson(GBase):
             print( message )
             pass
 
-        # process the medias
+        # process the clickable medias
 
         medias = []
         current_window = browser.current_window_handle
@@ -444,9 +444,17 @@ class GPerson(GBase):
                     if window not in current_windows:
                         browser.switch_to.window(window)
                         imagesoup = BeautifulSoup(browser.page_source, 'html.parser')
+                        # find and click download button
+                        # unzip file
+                        # grab details
                         break
             except:
                 print( 'failed action')
+
+        # process the regular medias
+        # image = browser.find_elements(By.CSS_SELECTOR, "img[ng-src]")
+        # image = browser.find_elements(By.XPATH, "//img[@ng-src and not(@ng-click)]")
+
 
         browser.quit()
 
