@@ -300,6 +300,74 @@ class GBase:
 
 #----------------------------------------------------------------------------------------------------------------------------------
 #
+# GFamily class
+#
+#----------------------------------------------------------------------------------------------------------------------------------
+
+class GFamily(GBase):
+
+    # -------------------------------------------------------------------------
+    # __init__
+    # -------------------------------------------------------------------------
+    # family : geneanet soup
+
+    def __init__(self, personref, family ):
+
+        try:
+            marriage = family.find("em").get_text()
+        except:
+            marriage = None
+                
+        # marriage date
+        try:
+            self._marriagedate = format_ca( convert_date(marriage.split(',')[0].split()[1:]) )
+        except:
+            self._marriagedate = None
+
+        # marriage place
+        try:
+            self._marriageplace = ', '.join([x for x in marriage.strip().split(',')[1:] if x]).strip()
+            self._marriageplace = ",".join( item.strip() for item in self._marriageplace.split(",") )
+        except:
+            self._marriageplace = None
+
+        # spouses ref
+        try:
+            # first <a> can be a ref to sosa
+            self._spouseref = [ personref, clean_ref( [a for a in family.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
+            
+        except:
+            self._spouseref = [ personref, None ]
+
+        # divorce date
+        self._divorcedate = None
+        display("Add divorce processing")
+
+        # childs
+        self._childsref = []
+        try:
+            for item in family.find("ul").find_all( "li", recursive=False ):
+                # first <a> can be a ref to sosa
+                self._childsref = self._childsref + [ clean_ref( [a for a in item.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
+        except:
+            self._childsref = []
+
+    # -------------------------------------------------------------------------
+    # spousesref
+    # -------------------------------------------------------------------------
+    @property
+    def spousesref(self):
+        return self._spouseref
+
+    # -------------------------------------------------------------------------
+    # childsref
+    # -------------------------------------------------------------------------
+    @property
+    def childsref(self):
+        return self._childsref
+
+#----------------------------------------------------------------------------------------------------------------------------------
+#
 # GPerson class
 #
 #----------------------------------------------------------------------------------------------------------------------------------
@@ -310,18 +378,18 @@ class GPerson(GBase):
     # __init__
     # -------------------------------------------------------------------------
     # url : geneanet url
-    # person : calling GPerson
 
-    def __init__(self, url, code):
+    def __init__(self, url):
 
         display(_("Person %s")%(url), level=2 )
 
         # Geneanet
-        self._code = code
         self._url = url
         #self.path = urllib.parse.urljoin(url, '..')
         self._ref = clean_ref( url )
-        
+
+        self._gedcomid = ""
+
         self._portrait = {
             'sosa' : None,
             'firstname' : "",
@@ -335,9 +403,9 @@ class GPerson(GBase):
 
         self._parentsref = []
 
-        self._unions = []
-
         self._siblingsref = []
+
+        self._families = []
 
         self._medias = []
 
@@ -365,9 +433,6 @@ class GPerson(GBase):
         else:
             page = page.replace( "?", "?lang=fr&" )
 
-        # contents is an array of tuples
-        # each tuple is the name of the bloc and content of the bloc
-
         contents = []
         medias = []
 
@@ -375,18 +440,6 @@ class GPerson(GBase):
 
         browser = webdriver.Safari()
         browser.get(page)
-        browser.maximize_window()
-
-        try:
-            consent_button = WebDriverWait(browser, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
-            )
-            ActionChains(browser).move_to_element(consent_button).click().perform()
-        except:
-            pass
-
-        screenshot_path = "screenshots/" + encode_url( page ) + ".png"
-        browser.get_screenshot_as_file(screenshot_path)
 
         try:
             # Focus on perso bloc
@@ -396,8 +449,7 @@ class GPerson(GBase):
 
             # extract the medias
 
-            images = perso.find_all("img", attrs={"ng-src": re.compile(r".*")} )
-            print( images )
+            # images = perso.find_all("img", attrs={"ng-src": re.compile(r".*")} )
 
             # extract the geneanet sections
 
@@ -425,36 +477,35 @@ class GPerson(GBase):
 
         # process the clickable medias
 
-        medias = []
-        current_window = browser.current_window_handle
+        # medias = []
+        # current_window = browser.current_window_handle
 
-        images = browser.find_elements(By.CSS_SELECTOR, "img[ng-click='mediasCtrl.mediaClick(media)']")
-        for image in images:
-            try:
-                browser.switch_to.window(current_window)
-                current_windows = browser.window_handles
-                print( image )
-                print( 'click' )
-                image.click()
-                print( 'clicked' )
-                time.sleep(2)  # Wait for the new window/tab to open
-                all_windows = browser.window_handles
+        # images = browser.find_elements(By.CSS_SELECTOR, "img[ng-click='mediasCtrl.mediaClick(media)']")
+        # for image in images:
+        #     try:
+        #         browser.switch_to.window(current_window)
+        #         current_windows = browser.window_handles
+        #         print( image )
+        #         print( 'click' )
+        #         image.click()
+        #         print( 'clicked' )
+        #         time.sleep(2)  # Wait for the new window/tab to open
+        #         all_windows = browser.window_handles
 
-                for window in all_windows:
-                    if window not in current_windows:
-                        browser.switch_to.window(window)
-                        imagesoup = BeautifulSoup(browser.page_source, 'html.parser')
-                        # find and click download button
-                        # unzip file
-                        # grab details
-                        break
-            except:
-                print( 'failed action')
+        #         for window in all_windows:
+        #             if window not in current_windows:
+        #                 browser.switch_to.window(window)
+        #                 imagesoup = BeautifulSoup(browser.page_source, 'html.parser')
+        #                 # find and click download button
+        #                 # unzip file
+        #                 # grab details
+        #                 break
+        #     except:
+        #         print( 'failed action')
 
         # process the regular medias
         # image = browser.find_elements(By.CSS_SELECTOR, "img[ng-src]")
         # image = browser.find_elements(By.XPATH, "//img[@ng-src and not(@ng-click)]")
-
 
         browser.quit()
 
@@ -554,56 +605,15 @@ class GPerson(GBase):
                     pass
 
             # -------------------------------------------------------------
-            # Union section
+            # Families section
             # -------------------------------------------------------------
             elif 'union' in section.name.lower():
-                Union = namedtuple("Marriage", "spouseref date place divorce childsref")
-
                 try:
-                    _unions = section.content.find('ul', class_=re.compile('.*fiche_union.*') ).find_all( "li", recursive=False )
+                    self._families = []
+                    families = section.content.find('ul', class_=re.compile('.*fiche_union.*') ).find_all( "li", recursive=False )
 
-                    for union in _unions:
-                        try:
-                            marriage = union.find("em").get_text()
-                        except:
-                            marriage = None
-                            
-                        # marriage date
-                        try:
-                            marriagedate = format_ca( convert_date(marriage.split(',')[0].split()[1:]) )
-                        except:
-                            marriagedate = None
-
-                        # marriage place
-                        try:
-                            marriageplace = ', '.join([x for x in marriage.strip().split(',')[1:] if x]).strip()
-                            marriageplace = ",".join( item.strip() for item in marriageplace.split(",") )
-                        except:
-                            marriageplace = None
-
-                        # spouse ref
-                        try:
-                            # first <a> can be a ref to sosa
-                            spouseref = clean_ref( [a for a in union.find_all('a') if a.get_text(strip=True)][0]['href'] )
-                            
-                        except:
-                            spouseref = None
-
-                        # divorce date
-                        divorcedate = None
-                        display("Add divorce processing")
-
-                        # childs
-                        childsref = []
-                        try:
-                            for item in union.find("ul").find_all( "li", recursive=False ):
-                                # first <a> can be a ref to sosa
-                                childsref = childsref + [ clean_ref( [a for a in item.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
-                        except:
-                            childsref = []
-
-                        self._unions = self._unions + [Union( spouseref, marriagedate, marriageplace, divorcedate, childsref)]
-
+                    for family in families:
+                        self._families = self._families + [ GFamily(self._ref, family) ]
                 except:
                     pass
 
@@ -671,38 +681,41 @@ class GPerson(GBase):
         # Medias
         # -------------------------------------------------------------
         
-        if len(medias) > 0:
+        # if len(medias) > 0:
 
-            display("Add medias processing")
-            display( medias )
-            for media in medias:
-                try:
-                    # Get the 'src' attribute of the image
-                    image_url = media.attrs['src']
-                    image_alt = media.attrs['alt']
+        #     display("Add medias processing")
+        #     display( medias )
+        #     for media in medias:
+        #         try:
+        #             # Get the 'src' attribute of the image
+        #             image_url = media.attrs['src']
+        #             image_alt = media.attrs['alt']
 
-                    # Download the image using requests
-                    response = requests.get(urllib.parse.urljoin(ROOTURL, image_url))
+        #             # Download the image using requests
+        #             response = requests.get(urllib.parse.urljoin(ROOTURL, image_url))
 
-                    # Save the image to a file
-                    image_dir = os.path.join("images", encode_url( self._ref ))
-                    os.makedirs(image_dir, exist_ok=True)
-                    image_filename = os.path.join(image_dir, image_alt + "_" + os.path.basename(image_url))
-                    with open(image_filename, 'wb') as f:
-                        try:
-                            f.write(response.content)
-                        except:
-                            pass
-                        f.close()
-                except:
-                    pass
+        #             # Save the image to a file
+        #             image_dir = os.path.join("images", encode_url( self._ref ))
+        #             os.makedirs(image_dir, exist_ok=True)
+        #             image_filename = os.path.join(image_dir, image_alt + "_" + os.path.basename(image_url))
+        #             with open(image_filename, 'wb') as f:
+        #                 try:
+        #                     f.write(response.content)
+        #                 except:
+        #                     pass
+        #                 f.close()
+        #         except:
+        #             pass
 
     # -------------------------------------------------------------------------
-    # code
+    # set_id
     # -------------------------------------------------------------------------
-    @property
-    def code(self):
-        return self._code
+    def set_id(self, ref_to_id):
+        try:
+            # "I%05d"%(ref_to_id[self._ref])
+            self._gedcomid = ref_to_id[self._ref]
+        except:
+            self._gedcomid = ""
 
     # -------------------------------------------------------------------------
     # portrait
@@ -723,14 +736,14 @@ class GPerson(GBase):
     # -------------------------------------------------------------------------
     @property
     def spousesref(self):
-        return [ union.spouseref for union in self._unions ]
+        return [item for sublist in [ family.spousesref for family in self._families ] for item in sublist]
 
     # -------------------------------------------------------------------------
     # childsref
     # -------------------------------------------------------------------------
     @property
     def childsref(self):
-        return [item for sublist in [ union.childsref for union in self._unions ] for item in sublist]
+        return [item for sublist in [ family.childsref for family in self._families ] for item in sublist]
 
     # -------------------------------------------------------------------------
     # siblingsref
@@ -738,6 +751,19 @@ class GPerson(GBase):
     @property
     def siblingsref(self):
         return self._siblingsref
+
+    # -------------------------------------------------------------------------
+    # families
+    # -------------------------------------------------------------------------
+    @property
+    def families(self):
+        return self._families
+
+#----------------------------------------------------------------------------------------------------------------------------------
+#
+# GPersons class
+#
+#----------------------------------------------------------------------------------------------------------------------------------
 
 class GPersons(GBase):
 
@@ -755,15 +781,18 @@ class GPersons(GBase):
         self._spouses = spouses
         self._descendants = descendants
 
+        self._families = []
+
     # -------------------------------------------------------------------------
     # add_person
     # -------------------------------------------------------------------------
 
-    def add_person( self, url, level = 0, code = '0'  ):
+    def add_person( self, url, level = 0  ):
 
         ref = clean_ref( url )
         if ref not in self._persons:
-            self._persons[ref] = GPerson( url, code )
+            self._persons[ref] = GPerson( url )
+            self._families = self._families + self._persons[ref].families
 
             display( vars(self._persons[ref]), title=ref )
 
@@ -771,15 +800,15 @@ class GPersons(GBase):
 
                 if self._ascendants:
                     for parent in self._persons[ref].parentsref:
-                        self.add_person( parent, level+1, "%s%s%d"%(code, "p", len(self._persons)) )
+                        self.add_person( parent, level+1 )
 
                 if self._spouses:
                     for spouse in self._persons[ref].spousesref:
-                        self.add_person( spouse, level+1, "%s%s%d"%(code, "s", len(self._persons)) )
+                        self.add_person( spouse, level+1 )
 
                 if self._descendants:
                     for child in self._persons[ref].childsref:
-                        self.add_person( child, level+1, "%s%s%d"%(code, "c", len(self._persons)) )
+                        self.add_person( child, level+1 )
 
     # -------------------------------------------------------------------------
     # print
@@ -787,6 +816,12 @@ class GPersons(GBase):
 
     def print( self ):
         display( self._persons, title="%d Persons"%(len(self._persons)) )
+        for key, person in self._persons.items():
+            display( vars(person), title="Person: %s"%(key) )
+
+        display( self._families, title="%d Families"%(len(self._families)) )
+        for family in self._families:
+            display( vars(family), title="Family" )
 
 ###################################################################################################################################
 # main
@@ -856,7 +891,7 @@ def main():
     # Create the first Person
 
     ROOTURL = urllib.parse.urljoin(purl, '..')
-    LEVEL = 3
+    LEVEL = 1
     ascendants = True
     descendants = True
     spouses = True
