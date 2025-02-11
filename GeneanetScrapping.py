@@ -334,10 +334,10 @@ class GFamily(GBase):
         # spouses ref
         try:
             # first <a> can be a ref to sosa
-            self._spouseref = [ personref, clean_ref( [a for a in family.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
+            self._spouseref = ( personref, clean_ref( [a for a in family.find_all('a') if a.get_text(strip=True)][0]['href'] ) )
             
         except:
-            self._spouseref = [ personref, None ]
+            self._spouseref = ( personref, None )
 
         # divorce date
         self._divorcedate = None
@@ -387,8 +387,6 @@ class GPerson(GBase):
         self._url = url
         #self.path = urllib.parse.urljoin(url, '..')
         self._ref = clean_ref( url )
-
-        self._gedcomid = ""
 
         self._portrait = {
             'sosa' : None,
@@ -781,7 +779,7 @@ class GPersons(GBase):
         self._spouses = spouses
         self._descendants = descendants
 
-        self._families = []
+        self._families = {}
 
     # -------------------------------------------------------------------------
     # add_person
@@ -792,7 +790,13 @@ class GPersons(GBase):
         ref = clean_ref( url )
         if ref not in self._persons:
             self._persons[ref] = GPerson( url )
-            self._families = self._families + self._persons[ref].families
+            try:
+                new_families = self._persons[ref].families
+                for family in new_families:
+                    if family.spousesref not in self._families and family.spousesref[::-1] not in self._families:
+                        self._families[ family.spousesref ] = family
+            except:
+                pass
 
             display( vars(self._persons[ref]), title=ref )
 
@@ -820,8 +824,8 @@ class GPersons(GBase):
             display( vars(person), title="Person: %s"%(key) )
 
         display( self._families, title="%d Families"%(len(self._families)) )
-        for family in self._families:
-            display( vars(family), title="Family" )
+        for key, family in self._families.items():
+            display( vars(family), title="Family: %s"%(str(key)) )
 
 ###################################################################################################################################
 # main
