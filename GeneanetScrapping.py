@@ -256,17 +256,19 @@ def convert_date(datetab):
         bd2 = babel.dates.parse_date(bd1, locale=locale)
     return(bd2.strftime("%Y-%m-%d"))
 
-def clean_ref( ref ):
-
-    queries = urllib.parse.parse_qs(urllib.parse.urlparse(ref).query)
+def clean_ref( url ):
+    return re.sub( r'^/', '', urllib.parse.urlparse(url).path ) + "?" + clean_query( url )
+    
+def clean_query( url ):
+    queries = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
     queries_to_keep = [ 'nz', 'pz', 'm', 'v', 'p', 'n', 'oc', 'i' ]
 
     removed_queries = {k: v for k, v in queries.items() if k not in queries_to_keep + ['lang']}
     if len(removed_queries) > 0:
         display( "Removed queries: %s"%(removed_queries) )
 
-    return re.sub( r'^/', '', urllib.parse.urlparse(ref).path ) + "?" + urllib.parse.urlencode({k: v for k, v in queries.items() if k != 'lang'}, doseq=True)
-    return re.sub( r'^/', '', urllib.parse.urlparse(ref).path ) + "?" + urllib.parse.urlencode({k: v for k, v in queries.items() if k in queries_to_keep}, doseq=True)
+    return urllib.parse.urlencode({k: v for k, v in queries.items() if k != 'lang'}, doseq=True)
+    return urllib.parse.urlencode({k: v for k, v in queries.items() if k in queries_to_keep}, doseq=True)
 
 def clean_text( html, md = True, links = False, images = False, emphasis = False ):
     import html2text
@@ -282,7 +284,7 @@ def clean_text( html, md = True, links = False, images = False, emphasis = False
         return markdown.markdown( converter.handle( html ) )
 
 def encode_url( url ):
-    return clean_ref( url ).replace('?','#').replace('=','_').replace('&','.')
+    return url.replace('?','#').replace('=','_').replace('&','.')
 
 def decode_url( url ):
     return clean_ref( url ).replace('#','?').replace('_','=').replace('.','&')
@@ -334,10 +336,10 @@ class GFamily(GBase):
         # spouses ref
         try:
             # first <a> can be a ref to sosa
-            self._spouseref = ( personref, clean_ref( [a for a in family.find_all('a') if a.get_text(strip=True)][0]['href'] ) )
+            self._spousesref = [ personref, clean_ref( [a for a in family.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
             
         except:
-            self._spouseref = ( personref, None )
+            self._spousesref = [ personref, None ]
 
         # divorce date
         self._divorcedate = None
@@ -353,11 +355,30 @@ class GFamily(GBase):
             self._childsref = []
 
     # -------------------------------------------------------------------------
+    # setids
+    # -------------------------------------------------------------------------
+    def setids(self, persons_table, families_table):
+        try:
+            self._gedcomid = families_table[self._spousesref]
+        except:
+            self._gedcomid = ""
+
+        try:
+            self._spousesid = [ persons_table[spouse] for spouse in self._spousesref ]
+        except:
+            self._spousesid = ""
+
+        try:
+            self._childsid = [ persons_table[child] for child in self._childsref ]
+        except:
+            self._childsid = ""
+
+    # -------------------------------------------------------------------------
     # spousesref
     # -------------------------------------------------------------------------
     @property
     def spousesref(self):
-        return self._spouseref
+        return tuple( self._spousesref )
 
     # -------------------------------------------------------------------------
     # childsref
@@ -365,6 +386,14 @@ class GFamily(GBase):
     @property
     def childsref(self):
         return self._childsref
+
+    # -------------------------------------------------------------------------
+    # gedcom
+    # -------------------------------------------------------------------------
+    @property
+    def gedcom(self):
+        text ="@F%d@ FAM"%(self._gedcomid)
+        return text
 
 #----------------------------------------------------------------------------------------------------------------------------------
 #
@@ -385,11 +414,13 @@ class GPerson(GBase):
 
         # Geneanet
         self._url = url
-        #self.path = urllib.parse.urljoin(url, '..')
-        self._ref = clean_ref( url )
+        self._path = re.sub( r'^/', '', urllib.parse.urlparse(url).path )
+        self._ref = clean_query( url )
+
+        #Gedcom
+        self._id = None
 
         self._portrait = {
-            'sosa' : None,
             'firstname' : "",
             'lastname' : "",
             'sex' : "U",
@@ -416,28 +447,67 @@ class GPerson(GBase):
     # _read_geneanet
     # -------------------------------------------------------------------------
 
-    def _read_geneanet( self, page ):
+    def _read_geneanet( self, url ):
 
-        # add 
-        if urllib.parse.urlsplit(page).scheme == '':
-            page = ROOTURL + page
-             
+        # add scheme and path if missing
+
         # force fr language
 
-        queries = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(page).query))
+        queries = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))
         if 'lang' in queries:
             if queries['lang'] != 'fr':
-                page = page.replace( "lang=" + queries['lang'], "lang=fr" )
+                url = url.replace( "lang=" + queries['lang'], "lang=fr" )
         else:
-            page = page.replace( "?", "?lang=fr&" )
-
-        contents = []
-        medias = []
-
-        Section = namedtuple("Section", "name content")
+            url = url.replace( "?", "?lang=fr&" )
 
         browser = webdriver.Safari()
-        browser.get(page)
+        browser.get(url)
+
+        # process screenshot
+
+        try:
+            browser.maximize_window()
+
+            try:
+                consent_button = WebDriverWait(browser, 20).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
+                )
+                ActionChains(browser).move_to_element(consent_button).click().perform()
+            except:
+                pass
+
+            output_dir = os.path.join("data", self._path, "screenshots")
+            os.makedirs(output_dir, exist_ok=True)
+            output_file = clean_query(url).replace('&','.').replace('=','_')
+
+            browser.get_screenshot_as_file(os.path.join( output_dir, output_file + ".png" ))
+
+            # AppleScript
+            # tell application "Safari"
+            #     activate
+            #     open location "https://www.example.com"
+            #     delay 3 -- Wait for the page to load
+            #     do JavaScript "window.print();" in current tab of window 1
+            # end tell
+
+            # tell application "System Events"
+            #     keystroke "p" using command down -- Simulate Command+P for print
+            #     delay 1
+            #     keystroke "p" using {command down, shift down} -- Simulate Command+Shift+P to Save as PDF
+            #     delay 1
+            #     keystroke "output.pdf" -- Change this to the desired path
+            #     keystroke return
+            # end tell
+
+        except:
+            pass
+
+        # Parse content to sections
+
+        contents = []
+        # medias = []
+
+        Section = namedtuple("Section", "name content")
 
         try:
             # Focus on perso bloc
@@ -507,7 +577,7 @@ class GPerson(GBase):
 
         browser.quit()
 
-        return perso, medias, contents
+        return perso, None, contents
 
     # -------------------------------------------------------------------------
     # scrap_geneanet
@@ -525,13 +595,6 @@ class GPerson(GBase):
             # Portrait section
             # -------------------------------------------------------------
             if 'portrait' in section.name.lower():
-
-                # sosa
-                try:
-                    sosa = int(section.content.find("em", {"class" : "sosa"}).find_all("a")[0].get_text().replace('\xa0', ''))
-                    self._portrait['sosa'] = sosa
-                except:
-                    pass
 
                 # first and last names
                 try:
@@ -598,7 +661,7 @@ class GPerson(GBase):
             elif 'parents' in section.name.lower():
                 
                 try:
-                    self._parentsref = [clean_ref( item['href'] ) for item in section.content.find_all("a") if len( item.find_all("img", {"alt" : "sosa"}) ) == 0]
+                    self._parentsref = [clean_query( item['href'] ) for item in section.content.find_all("a") if len( item.find_all("img", {"alt" : "sosa"}) ) == 0]
                 except:
                     pass
 
@@ -624,7 +687,7 @@ class GPerson(GBase):
                         tag_a = item.find('a')
                         if tag_a.get_text(strip=True): 
                             # first <a> can be a ref to sosa
-                            self._siblingsref = self._siblingsref + [ clean_ref( tag_a['href'] ) ]
+                            self._siblingsref = self._siblingsref + [ clean_query( tag_a['href'] ) ]
                 except:
                     pass
 
@@ -706,14 +769,28 @@ class GPerson(GBase):
         #             pass
 
     # -------------------------------------------------------------------------
-    # set_id
+    # setids
     # -------------------------------------------------------------------------
-    def set_id(self, ref_to_id):
+    def setids(self, persons_table, families_table):
         try:
-            # "I%05d"%(ref_to_id[self._ref])
-            self._gedcomid = ref_to_id[self._ref]
+            self._gedcomid = persons_table[self._ref]
         except:
             self._gedcomid = ""
+
+        try:
+            self._parentsid = [ persons_table[parent] for parent in self._parentsref ]
+        except:
+            self._parentsid = ""
+
+        try:
+            self._siblingsid = [ persons_table[sibling] for sibling in self._siblingsref ]
+        except:
+            self._siblingsid = ""
+
+        try:
+            self._familiesid = [ families_table[family] for family in self._families ]
+        except:
+            self._familiesid = ""
 
     # -------------------------------------------------------------------------
     # portrait
@@ -757,6 +834,14 @@ class GPerson(GBase):
     def families(self):
         return self._families
 
+    # -------------------------------------------------------------------------
+    # gedcom
+    # -------------------------------------------------------------------------
+    @property
+    def gedcom(self):
+        text ="@I%d@ INDI"%(self._gedcomid)
+        return text
+
 #----------------------------------------------------------------------------------------------------------------------------------
 #
 # GPersons class
@@ -781,20 +866,32 @@ class GPersons(GBase):
 
         self._families = {}
 
+        self._parse = None
+        self._user = ""
+
     # -------------------------------------------------------------------------
     # add_person
     # -------------------------------------------------------------------------
 
     def add_person( self, url, level = 0  ):
 
-        ref = clean_ref( url )
+        if self._parse == None:
+            self._parse = urllib.parse.urlparse(url)
+
+        if self._user == "":
+            self._user = re.sub( r'^/', '', self._parse.path )
+
+        if urllib.parse.urlparse(url).scheme == "":
+            url = urllib.parse.urlunparse((self._parse.scheme, self._parse.netloc, self._parse.path, '', url, ''))
+
+        ref = clean_query( url )
         if ref not in self._persons:
             self._persons[ref] = GPerson( url )
             try:
                 new_families = self._persons[ref].families
                 for family in new_families:
-                    if family.spousesref not in self._families and family.spousesref[::-1] not in self._families:
-                        self._families[ family.spousesref ] = family
+                    if tuple(family.spousesref) not in self._families and tuple(family.spousesref)[::-1] not in self._families:
+                        self._families[ tuple(family.spousesref) ] = family
             except:
                 pass
 
@@ -813,6 +910,25 @@ class GPersons(GBase):
                 if self._descendants:
                     for child in self._persons[ref].childsref:
                         self.add_person( child, level+1 )
+
+    # -------------------------------------------------------------------------
+    # gedcom
+    # -------------------------------------------------------------------------
+
+    def gedcom( self ):
+
+        # set gedcom id
+        persons_table = {key: index+1 for index, key in enumerate(self._persons)}
+        families_table = {key: index+1 for index, key in enumerate(self._families)}
+
+        for ref, person in self._persons.items():
+            person.setids( persons_table, families_table )
+
+        for ref, family in self._families.items():
+            family.setids( persons_table, families_table )
+
+
+        return ""
 
     # -------------------------------------------------------------------------
     # print
@@ -902,6 +1018,8 @@ def main():
 
     persons = GPersons( LEVEL, ascendants, spouses, descendants )
     persons.add_person( purl )
+
+    persons.gedcom()
 
     persons.print()
 
