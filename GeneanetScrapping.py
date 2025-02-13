@@ -29,9 +29,12 @@ import uuid
 import random
 import argparse
 import urllib
-#from lxml import html, etree
-import babel, babel.dates
+import json
 from collections import namedtuple
+from datetime import datetime
+from pathlib import Path
+
+import babel, babel.dates
 
 #-------------------------------------------------------------------------
 #
@@ -46,7 +49,7 @@ descendants = False
 spouses = False
 LEVEL = 2
 
-ROOTURL = 'https://gw.geneanet.org/'
+ICLOUD_PATH = "."
 
 persons = {}
 
@@ -68,7 +71,7 @@ from rich.prompt import Prompt
 from rich.traceback import install
 from rich.pretty import Pretty
 
-console = Console()
+console = Console(record=True)
 
 HEADER1 = 1
 HEADER2 = 2
@@ -150,8 +153,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
-
-import requests
+from selenium.webdriver.chrome.service import Service
 
 #-------------------------------------------------------------------------
 #
@@ -261,14 +263,17 @@ def clean_ref( url ):
     
 def clean_query( url ):
     queries = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
-    queries_to_keep = [ 'nz', 'pz', 'm', 'v', 'p', 'n', 'oc', 'i' ]
+    if len(queries) > 0:
+        queries_to_keep = [ 'nz', 'pz', 'm', 'v', 'p', 'n', 'oc', 'i' ]
 
-    removed_queries = {k: v for k, v in queries.items() if k not in queries_to_keep + ['lang']}
-    if len(removed_queries) > 0:
-        display( "Removed queries: %s"%(removed_queries) )
+        removed_queries = {k: v for k, v in queries.items() if k not in queries_to_keep + ['lang']}
+        if len(removed_queries) > 0:
+            display( "Removed queries: %s"%(removed_queries) )
 
-    return urllib.parse.urlencode({k: v for k, v in queries.items() if k != 'lang'}, doseq=True)
-    return urllib.parse.urlencode({k: v for k, v in queries.items() if k in queries_to_keep}, doseq=True)
+        return urllib.parse.urlencode({k: v for k, v in queries.items() if k != 'lang'}, doseq=True)
+        return urllib.parse.urlencode({k: v for k, v in queries.items() if k in queries_to_keep}, doseq=True)
+    else:
+        return url
 
 def clean_text( html, md = True, links = False, images = False, emphasis = False ):
     import html2text
@@ -336,10 +341,10 @@ class GFamily(GBase):
         # spouses ref
         try:
             # first <a> can be a ref to sosa
-            self._spousesref = [ personref, clean_ref( [a for a in family.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
+            self._spousesref = [ clean_query( personref ), clean_query( [a for a in family.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
             
         except:
-            self._spousesref = [ personref, None ]
+            self._spousesref = [ clean_query( personref ), None ]
 
         # divorce date
         self._divorcedate = None
@@ -350,7 +355,7 @@ class GFamily(GBase):
         try:
             for item in family.find("ul").find_all( "li", recursive=False ):
                 # first <a> can be a ref to sosa
-                self._childsref = self._childsref + [ clean_ref( [a for a in item.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
+                self._childsref = self._childsref + [ clean_query( [a for a in item.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
         except:
             self._childsref = []
 
@@ -361,17 +366,21 @@ class GFamily(GBase):
         try:
             self._gedcomid = families_table[self._spousesref]
         except:
-            self._gedcomid = ""
+            self._gedcomid = None
 
-        try:
-            self._spousesid = [ persons_table[spouse] for spouse in self._spousesref ]
-        except:
-            self._spousesid = ""
+        self._spousesid = []
+        for spouse in self._spousesref:
+            try:
+                self._spousesid = self._spousesid + [ persons_table[spouse] ]
+            except:
+                self._spousesid = self._spousesid + [ None ]
 
-        try:
-            self._childsid = [ persons_table[child] for child in self._childsref ]
-        except:
-            self._childsid = ""
+        self._childsid = []
+        for child in self._childsref:
+            try:
+                self._childsid = self._childsid + [ persons_table[child] ]
+            except:
+                self._childsid = self._childsid + [ None ]
 
     # -------------------------------------------------------------------------
     # spousesref
@@ -449,7 +458,7 @@ class GPerson(GBase):
 
     def _read_geneanet( self, url ):
 
-        # add scheme and path if missing
+        output_file = clean_query(url).replace('&','.').replace('=','_').replace('+',' ')
 
         # force fr language
 
@@ -460,46 +469,49 @@ class GPerson(GBase):
         else:
             url = url.replace( "?", "?lang=fr&" )
 
-        browser = webdriver.Safari()
+        # Chrome setup
+
+        chrome_options = webdriver.ChromeOptions()
+        # chrome_options.add_argument("--headless")  # Headless mode to avoid opening a browser window
+        chrome_options.add_argument("--kiosk-printing")  # Enables silent printing
+        chrome_options.add_argument("--disable-gpu")  # Disables GPU acceleration (helpful in some cases)
+
+        # Configure Chrome print settings to save as PDF
+        output_pdf = ICLOUD_PATH / self._path / "pdf"
+        chrome_options.add_experimental_option("prefs", {
+            "printing.print_preview_sticky_settings.appState": '{"recentDestinations":[{"id":"Save as PDF","origin":"local"}],"selectedDestinationId":"Save as PDF","version":2}',
+            "savefile.default_directory": str(output_pdf)
+        })
+
+        service = Service()  # No need to specify path if using Selenium 4.6+
+        browser = webdriver.Chrome(service=service, options=chrome_options)
+
+        # let's go browse
+
         browser.get(url)
 
-        # process screenshot
+        browser.maximize_window()
 
         try:
-            browser.maximize_window()
-
-            try:
-                consent_button = WebDriverWait(browser, 20).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
-                )
-                ActionChains(browser).move_to_element(consent_button).click().perform()
-            except:
-                pass
-
-            output_dir = os.path.join("data", self._path, "screenshots")
-            os.makedirs(output_dir, exist_ok=True)
-            output_file = clean_query(url).replace('&','.').replace('=','_')
-
-            browser.get_screenshot_as_file(os.path.join( output_dir, output_file + ".png" ))
-
-            # AppleScript
-            # tell application "Safari"
-            #     activate
-            #     open location "https://www.example.com"
-            #     delay 3 -- Wait for the page to load
-            #     do JavaScript "window.print();" in current tab of window 1
-            # end tell
-
-            # tell application "System Events"
-            #     keystroke "p" using command down -- Simulate Command+P for print
-            #     delay 1
-            #     keystroke "p" using {command down, shift down} -- Simulate Command+Shift+P to Save as PDF
-            #     delay 1
-            #     keystroke "output.pdf" -- Change this to the desired path
-            #     keystroke return
-            # end tell
-
+            consent_button = WebDriverWait(browser, 20).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
+            )
+            ActionChains(browser).move_to_element(consent_button).click().perform()
         except:
+            pass
+
+        # Get content
+
+        soup = BeautifulSoup(browser.page_source, 'html.parser')
+
+        # process PDF
+        try:
+            output_pdf = output_pdf / (soup.title.string + ".pdf").replace(':','_')
+            output_pdf.parent.mkdir(parents=True, exist_ok=True)
+            output_pdf.unlink(missing_ok=True)        
+            browser.execute_script('window.print();')
+        except:
+            print( 'Failed to save PDF for %s'%(output_pdf))
             pass
 
         # Parse content to sections
@@ -512,7 +524,6 @@ class GPerson(GBase):
         try:
             # Focus on perso bloc
 
-            soup = BeautifulSoup(browser.page_source, 'html.parser')
             perso = soup.find("div", {"id": "perso"})
 
             # extract the medias
@@ -541,6 +552,21 @@ class GPerson(GBase):
             exc_type, exc_obj, exc_tb = sys.exc_info()
             message = f'Exception [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
             print( message )
+            pass
+
+        # process perso
+
+        try:
+            output_txt = ICLOUD_PATH / self._path / "html" / (output_file + ".txt")
+            output_txt.parent.mkdir(parents=True, exist_ok=True)
+            output_txt.unlink(missing_ok=True)
+            NL = "\n"
+            NC = 132
+
+            with open(output_txt, 'w') as file:
+                file.write( "="*NC + NL + ( soup.title.string if soup.title else url ) + NL + "="*NC + NL + NL + perso.prettify())
+                file.close()
+        except:
             pass
 
         # process the clickable medias
@@ -756,9 +782,8 @@ class GPerson(GBase):
         #             response = requests.get(urllib.parse.urljoin(ROOTURL, image_url))
 
         #             # Save the image to a file
-        #             image_dir = os.path.join("images", encode_url( self._ref ))
-        #             os.makedirs(image_dir, exist_ok=True)
-        #             image_filename = os.path.join(image_dir, image_alt + "_" + os.path.basename(image_url))
+        #             image_filename = os.path.join(ICLOUD_PATH, "images", encode_url( self._ref ), image_alt + "_" + os.path.basename(image_url))
+        #             os.makedirs(os.path.dirname(image_filename), exist_ok=True)
         #             with open(image_filename, 'wb') as f:
         #                 try:
         #                     f.write(response.content)
@@ -775,22 +800,31 @@ class GPerson(GBase):
         try:
             self._gedcomid = persons_table[self._ref]
         except:
-            self._gedcomid = ""
+            self._gedcomid = None
 
-        try:
-            self._parentsid = [ persons_table[parent] for parent in self._parentsref ]
-        except:
-            self._parentsid = ""
+        self._parentsid = []
+        for parent in self._parentsref:
+            try:
+                self._parentsid = self._parentsid + [ persons_table[parent] ]
+            except:
+                self._parentsid = self._parentsid + [ None ]
 
-        try:
-            self._siblingsid = [ persons_table[sibling] for sibling in self._siblingsref ]
-        except:
-            self._siblingsid = ""
+        self._siblingsid = []
+        for sibling in self._siblingsref:
+            try:
+                self._siblingsid = self._siblingsid + [ persons_table[sibling] ]
+            except:
+                self._siblingsid = self._siblingsid + [ None ]
 
-        try:
-            self._familiesid = [ families_table[family] for family in self._families ]
-        except:
-            self._familiesid = ""
+        self._familiesid = []
+        for family in self._families:
+            try:
+                self._familiesid = self._familiesid + [ families_table[tuple(family._spousesref)] ]
+            except:
+                try:
+                    self._familiesid = self._familiesid + [ families_table[tuple(family._spousesref)[::-1]] ]
+                except:
+                    self._familiesid = self._familiesid + [ None ]
 
     # -------------------------------------------------------------------------
     # portrait
@@ -914,7 +948,7 @@ class GPersons(GBase):
     # -------------------------------------------------------------------------
     # gedcom
     # -------------------------------------------------------------------------
-
+    @property
     def gedcom( self ):
 
         # set gedcom id
@@ -936,10 +970,12 @@ class GPersons(GBase):
 
     def print( self ):
         display( self._persons, title="%d Persons"%(len(self._persons)) )
+
+        display( self._families, title="%d Families"%(len(self._families)) )
+
         for key, person in self._persons.items():
             display( vars(person), title="Person: %s"%(key) )
 
-        display( self._families, title="%d Families"%(len(self._families)) )
         for key, family in self._families.items():
             display( vars(family), title="Family: %s"%(str(key)) )
 
@@ -951,17 +987,17 @@ def main():
 
     # global allow local modification of these global variables
     global gedcom
-    global gname
+    global gedcomfile
     global verbosity
     global force
     global ascendants
     global descendants
     global spouses
     global LEVEL
-    global ROOTURL
     global translation
     global locale
     global _
+    global ICLOUD_PATH
 
     display( "GeneanetScrapping", level=1 )
 
@@ -982,7 +1018,7 @@ def main():
     else:
         purl = args.searchedperson
 
-    gname = args.gedcomfile
+    gedcomfile = args.gedcomfile
     verbosity = args.verbosity
     force = args.force
     ascendants = args.ascendants
@@ -990,7 +1026,7 @@ def main():
     spouses = args.spouses
     LEVEL = args.level
 
-    if gname == None:
+    if gedcomfile == None:
         print("Veuillez indiquer le nom du fichier GEDCOM à produire")
         sys.exit(-1)
 
@@ -1008,22 +1044,35 @@ def main():
         print("ATTENTION: mode forcer activé")
         time.sleep(TIMEOUT)
 
-    # Create the first Person
+    # Set parameters
 
-    ROOTURL = urllib.parse.urljoin(purl, '..')
     LEVEL = 1
     ascendants = True
     descendants = True
     spouses = True
 
+    ICLOUD_PATH = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "GeneanetScrap"
+    ICLOUD_PATH.mkdir(exist_ok=True)
+
+    # Create the first Person
+
     persons = GPersons( LEVEL, ascendants, spouses, descendants )
     persons.add_person( purl )
 
-    persons.gedcom()
+    persons.gedcom
+
+    console.clear()
+    console._record_buffer = []
 
     persons.print()
 
-    sys.exit(0)
+    output_file = ICLOUD_PATH / f"console_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.unlink(missing_ok=True)
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(console.export_text())  # Saves formatted text output
+        f.close()
+
 
 if __name__ == '__main__':
     main()
