@@ -29,7 +29,7 @@
             "request": "launch",
             "program": "GeneanetScrapping.py",
             "console": "integratedTerminal",
-            "args": "-v 'https://gw.geneanet.org/lipari?lang=fr&pz=alexia&nz=henry&p=gabrielle+denise+josephine&n=bessey' -g gedcom.ged"
+            "args": "'https://gw.geneanet.org/lipari?lang=fr&pz=alexia&nz=henry&p=gabrielle+denise+josephine&n=bessey'"
         },
         {
             "name": "Gabrielle",
@@ -37,7 +37,7 @@
             "request": "launch",
             "program": "GeneanetScrapping.py",
             "console": "integratedTerminal",
-            "args": "-v 'https://gw.geneanet.org/lipari?lang=fr&pz=alexia&nz=henry&p=gabrielle+denise+josephine&n=bessey' -g gedcom.ged"
+            "args": "'https://gw.geneanet.org/lipari?pz=alexia&nz=henry&p=gabrielle+denise+josephine&n=bessey'"
         },
         {
             "name": "Marguerite",
@@ -45,7 +45,23 @@
             "request": "launch",
             "program": "GeneanetScrapping.py",
             "console": "integratedTerminal",
-            "args": "-v 'https://gw.geneanet.org/asempey?lang=fr&n=jantieu&p=margueritte&oc=0' -g gedcom.ged"
+            "args": "'https://gw.geneanet.org/asempey?n=jantieu&p=margueritte&oc=0'"
+        },
+        {
+            "name": "Léon 1",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "GeneanetScrapping.py",
+            "console": "integratedTerminal",
+            "args": "'https://gw.geneanet.org/lipari?pz=alexia&nz=henry&p=leon+desire+louis&n=bessey' -l 1"
+        },
+        {
+            "name": "Léon",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "GeneanetScrapping.py",
+            "console": "integratedTerminal",
+            "args": "'https://gw.geneanet.org/lipari?pz=alexia&nz=henry&p=leon+desire+louis&n=bessey' -l 20 -a -s"
         }
     ]
 }

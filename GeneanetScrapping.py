@@ -33,6 +33,7 @@ import json
 from collections import namedtuple
 from datetime import datetime
 from pathlib import Path
+import subprocess
 
 import babel, babel.dates
 
@@ -71,7 +72,7 @@ from rich.prompt import Prompt
 from rich.traceback import install
 from rich.pretty import Pretty
 
-console = Console(record=True)
+console = Console(record=True, width=132)
 
 HEADER1 = 1
 HEADER2 = 2
@@ -264,13 +265,13 @@ def clean_ref( url ):
 def clean_query( url ):
     queries = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
     if len(queries) > 0:
-        queries_to_keep = [ 'nz', 'pz', 'm', 'v', 'p', 'n', 'oc', 'i' ]
+        queries_to_keep = [ 'm', 'v', 'p', 'n', 'oc', 'i' ]
 
-        removed_queries = {k: v for k, v in queries.items() if k not in queries_to_keep + ['lang']}
+        removed_queries = {k: v for k, v in queries.items() if k not in queries_to_keep + ['lang', 'pz', 'nz']}
         if len(removed_queries) > 0:
             display( "Removed queries: %s"%(removed_queries) )
 
-        return urllib.parse.urlencode({k: v for k, v in queries.items() if k != 'lang'}, doseq=True)
+        # return urllib.parse.urlencode({k: v for k, v in queries.items() if k != 'lang'}, doseq=True)
         return urllib.parse.urlencode({k: v for k, v in queries.items() if k in queries_to_keep}, doseq=True)
     else:
         return url
@@ -346,9 +347,35 @@ class GFamily(GBase):
         except:
             self._spousesref = [ clean_query( personref ), None ]
 
+        # annulation date
+        self._annulationdate = None
+        if 'annulé' in family.get_text().lower():
+            display("Add annulation processing")
+
         # divorce date
         self._divorcedate = None
-        display("Add divorce processing")
+        if 'divorcé' in family.get_text().lower():
+            display("Add divorce processing")
+
+        # engagement date
+        self._engagementdate = None
+        if 'annulé' in family.get_text().lower():
+            display("Add engagement processing")
+
+        # publish date
+        self._publishdate = None
+        if 'bans' in family.get_text().lower():
+            display("Add publish processing")
+
+        # license date
+        self._licensedate = None
+        if 'license' in family.get_text().lower():
+            display("Add license processing")
+
+        # separation date
+        self._separationdate = None
+        if 'séparé' in family.get_text().lower():
+            display("Add separation processing")
 
         # childs
         self._childsref = []
@@ -456,9 +483,11 @@ class GPerson(GBase):
     # _read_geneanet
     # -------------------------------------------------------------------------
 
-    def _read_geneanet( self, url ):
+    def _read_geneanet( self, url, force = True ):
 
         output_file = clean_query(url).replace('&','.').replace('=','_').replace('+',' ')
+
+        output_txt = ICLOUD_PATH / self._path / "html" / (output_file + ".txt")
 
         # force fr language
 
@@ -469,50 +498,72 @@ class GPerson(GBase):
         else:
             url = url.replace( "?", "?lang=fr&" )
 
-        # Chrome setup
+        browser = None
 
-        chrome_options = webdriver.ChromeOptions()
-        # chrome_options.add_argument("--headless")  # Headless mode to avoid opening a browser window
-        chrome_options.add_argument("--kiosk-printing")  # Enables silent printing
-        chrome_options.add_argument("--disable-gpu")  # Disables GPU acceleration (helpful in some cases)
+        if force == False or not output_txt.exists():
 
-        # Configure Chrome print settings to save as PDF
-        output_pdf = ICLOUD_PATH / self._path / "pdf"
-        chrome_options.add_experimental_option("prefs", {
-            "printing.print_preview_sticky_settings.appState": '{"recentDestinations":[{"id":"Save as PDF","origin":"local"}],"selectedDestinationId":"Save as PDF","version":2}',
-            "savefile.default_directory": str(output_pdf)
-        })
+            # Chrome setup
 
-        service = Service()  # No need to specify path if using Selenium 4.6+
-        browser = webdriver.Chrome(service=service, options=chrome_options)
+            chrome_options = webdriver.ChromeOptions()
+            # chrome_options.add_argument("--headless")  # Headless mode to avoid opening a browser window
+            chrome_options.add_argument("--kiosk-printing")  # Enables silent printing
+            chrome_options.add_argument("--disable-gpu")  # Disables GPU acceleration (helpful in some cases)
 
-        # let's go browse
+            # Configure Chrome print settings to save as PDF
+            output_pdf = ICLOUD_PATH / self._path / "pdf"
+            chrome_options.add_experimental_option("prefs", {
+                "printing.print_preview_sticky_settings.appState": '{"recentDestinations":[{"id":"Save as PDF","origin":"local"}],"selectedDestinationId":"Save as PDF","version":2}',
+                "savefile.default_directory": str(output_pdf)
+            })
 
-        browser.get(url)
+            service = Service()  # No need to specify path if using Selenium 4.6+
+            browser = webdriver.Chrome(service=service, options=chrome_options)
 
-        browser.maximize_window()
+            # let's go browse
 
-        try:
-            consent_button = WebDriverWait(browser, 20).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
-            )
-            ActionChains(browser).move_to_element(consent_button).click().perform()
-        except:
-            pass
+            browser.get(url)
 
-        # Get content
+            try:
+                consent_button = WebDriverWait(browser, 20).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
+                )
+                ActionChains(browser).move_to_element(consent_button).click().perform()
+            except:
+                pass
 
-        soup = BeautifulSoup(browser.page_source, 'html.parser')
+            # Get content in perso bloc
 
-        # process PDF
-        try:
-            output_pdf = output_pdf / (soup.title.string + ".pdf").replace(':','_')
-            output_pdf.parent.mkdir(parents=True, exist_ok=True)
-            output_pdf.unlink(missing_ok=True)        
-            browser.execute_script('window.print();')
-        except:
-            print( 'Failed to save PDF for %s'%(output_pdf))
-            pass
+            soup = BeautifulSoup(browser.page_source, 'html.parser')
+            perso = soup.find("div", {"id": "perso"})
+
+
+            # process PDF
+            try:
+                output_pdf = output_pdf / (soup.title.string + ".pdf").replace(':','_')
+                output_pdf.parent.mkdir(parents=True, exist_ok=True)
+                output_pdf.unlink(missing_ok=True)        
+                browser.execute_script('window.print();')
+            except:
+                display( 'Failed to save PDF for %s'%(output_pdf))
+                pass
+
+            # process perso
+
+            try:
+                output_txt.parent.mkdir(parents=True, exist_ok=True)
+                output_txt.unlink(missing_ok=True)
+
+                NL = "\n"
+                NC = 132
+
+                output_txt.write_text( perso.prettify() )
+            except:
+                pass
+
+
+        else:
+            display( 'Read from %s'%(output_txt))
+            perso = BeautifulSoup( output_txt.read_text(), 'html.parser' )
 
         # Parse content to sections
 
@@ -522,10 +573,6 @@ class GPerson(GBase):
         Section = namedtuple("Section", "name content")
 
         try:
-            # Focus on perso bloc
-
-            perso = soup.find("div", {"id": "perso"})
-
             # extract the medias
 
             # images = perso.find_all("img", attrs={"ng-src": re.compile(r".*")} )
@@ -552,21 +599,6 @@ class GPerson(GBase):
             exc_type, exc_obj, exc_tb = sys.exc_info()
             message = f'Exception [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
             print( message )
-            pass
-
-        # process perso
-
-        try:
-            output_txt = ICLOUD_PATH / self._path / "html" / (output_file + ".txt")
-            output_txt.parent.mkdir(parents=True, exist_ok=True)
-            output_txt.unlink(missing_ok=True)
-            NL = "\n"
-            NC = 132
-
-            with open(output_txt, 'w') as file:
-                file.write( "="*NC + NL + ( soup.title.string if soup.title else url ) + NL + "="*NC + NL + NL + perso.prettify())
-                file.close()
-        except:
             pass
 
         # process the clickable medias
@@ -601,7 +633,8 @@ class GPerson(GBase):
         # image = browser.find_elements(By.CSS_SELECTOR, "img[ng-src]")
         # image = browser.find_elements(By.XPATH, "//img[@ng-src and not(@ng-click)]")
 
-        browser.quit()
+        if browser:
+            browser.quit()
 
         return perso, None, contents
 
@@ -680,6 +713,34 @@ class GPerson(GBase):
                         pass
                     else:
                         self._portrait['deathplace'] = str(uuid.uuid3(uuid.NAMESPACE_URL, self._url))
+
+                # baptem
+                try:
+                    baptem = section.content.find_all('li', string=lambda text: "baptisé" in text.lower() if text else False)[0].get_text()
+                    display("Add baptem processing")
+                except:
+                    baptem = ""
+
+                # occupation
+                try:
+                    occupation = section.content.find_all('li', string=lambda text: "employé" in text.lower() if text else False)[0].get_text()
+                    display("Add occupation processing")
+                except:
+                    occupation = ""
+
+                # burial
+                try:
+                    burial = section.content.find_all('li', string=lambda text: "inhumé" in text.lower() if text else False)[0].get_text()
+                    display("Add burial processing")
+                except:
+                    burial = ""
+
+                # adoption
+                try:
+                    adoption = section.content.find_all('li', string=lambda text: "adopté" in text.lower() if text else False)[0].get_text()
+                    display("Add adoption processing")
+                except:
+                    adoption = ""
 
             # -------------------------------------------------------------
             # Parents section
@@ -763,6 +824,8 @@ class GPerson(GBase):
             else:
                 if len(section.content) > 0:
                     display("Add processing for section: %s"%(section.name))
+
+        self._notes = None
 
         # -------------------------------------------------------------
         # Medias
@@ -890,8 +953,6 @@ class GPersons(GBase):
 
     def __init__(self, max_level, ascendants, spouses, descendants ):
 
-        display(_("Persons"), level=2 )
-
         self._persons = {}
         self._max_level = max_level
         self._ascendants = ascendants
@@ -929,7 +990,7 @@ class GPersons(GBase):
             except:
                 pass
 
-            display( vars(self._persons[ref]), title=ref )
+            # display( vars(self._persons[ref]), title=ref )
 
             if level < self._max_level:
 
@@ -986,14 +1047,15 @@ class GPersons(GBase):
 def main():
 
     # global allow local modification of these global variables
+    # global LEVEL
+    # global ascendants
+    # global descendants
+    # global spouses
+
     global gedcom
     global gedcomfile
     global verbosity
     global force
-    global ascendants
-    global descendants
-    global spouses
-    global LEVEL
     global translation
     global locale
     global _
@@ -1001,15 +1063,15 @@ def main():
 
     display( "GeneanetScrapping", level=1 )
 
-    parser = argparse.ArgumentParser(description=_("Export Geneanet subtrees into GEDCOM file"))
-    parser.add_argument("-v", "--verbosity", action="count", default=0, help=_("Increase verbosity"))
-    parser.add_argument("-a", "--ascendants", default=False, action='store_true', help=_("Includes ascendants (off by default)"))
-    parser.add_argument("-d", "--descendants", default=False, action='store_true', help=_("Includes descendants (off by default)"))
-    parser.add_argument("-s", "--spouses", default=True, action='store_true', help=_("Includes all spouses (off by default)"))
-    parser.add_argument("-l", "--level", default=2, type=int, help=_("Number of level to explore (2 by default)"))
-    parser.add_argument("-g", "--gedcomfile", type=str, help=_("Full path of the out GEDCOM"))
-    parser.add_argument("-f", "--force", default=False, action='store_true', help=_("Force processing"))
-    parser.add_argument("searchedperson", type=str, nargs='?', help=_("Url of the person to search in Geneanet"))
+    parser = argparse.ArgumentParser(description="Export Geneanet subtrees into GEDCOM file")
+    # parser.add_argument("-v", "--verbosity", action="count", default=0, help="Increase verbosity")
+    parser.add_argument("-a", "--ascendants", default=False, action='store_true', help="Includes ascendants (off by default)")
+    parser.add_argument("-d", "--descendants", default=False, action='store_true', help="Includes descendants (off by default)")
+    parser.add_argument("-s", "--spouses", default=False, action='store_true', help="Includes all spouses (off by default)")
+    parser.add_argument("-l", "--level", default=0, type=int, help="Number of level to explore (0 by default)")
+    parser.add_argument("-g", "--gedcomfile", type=str, help="Full path of the out GEDCOM")
+    parser.add_argument("-f", "--force", default=False, action='store_true', help="Force processing")
+    parser.add_argument("searchedperson", type=str, nargs='?', help="Url of the person to search in Geneanet")
     args = parser.parse_args()
 
     if args.searchedperson == None:
@@ -1019,16 +1081,17 @@ def main():
         purl = args.searchedperson
 
     gedcomfile = args.gedcomfile
-    verbosity = args.verbosity
+    # verbosity = args.verbosity
     force = args.force
     ascendants = args.ascendants
     descendants = args.descendants
     spouses = args.spouses
-    LEVEL = args.level
+    max_levels = args.level
 
-    if gedcomfile == None:
-        print("Veuillez indiquer le nom du fichier GEDCOM à produire")
-        sys.exit(-1)
+    if max_levels == None:
+        max_levels = 0
+
+    process= subprocess.Popen(["caffeinate", "-d"])
 
     header_gedcom_text = """
         0 HEAD
@@ -1040,39 +1103,37 @@ def main():
     """
     gedcom = gedcom.parse_string(header_gedcom_text)
 
-    if verbosity >= 1 and force:
-        print("ATTENTION: mode forcer activé")
-        time.sleep(TIMEOUT)
-
-    # Set parameters
-
-    LEVEL = 1
-    ascendants = True
-    descendants = True
-    spouses = True
+    # Create data folder
 
     ICLOUD_PATH = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "GeneanetScrap"
     ICLOUD_PATH.mkdir(exist_ok=True)
 
     # Create the first Person
 
-    persons = GPersons( LEVEL, ascendants, spouses, descendants )
-    persons.add_person( purl )
+    try:
+        persons = GPersons( max_levels, ascendants, spouses, descendants )
+        persons.add_person( purl, force )
 
-    persons.gedcom
+        persons.gedcom
+    except:
+        pass
+    
+    output_file = ICLOUD_PATH / "output" / f"logs_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.unlink(missing_ok=True)
+    output_file.write_text(console.export_text())  # Saves formatted text output
 
     console.clear()
     console._record_buffer = []
 
     persons.print()
 
-    output_file = ICLOUD_PATH / f"console_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
+    output_file = ICLOUD_PATH / "output" / f"console_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.unlink(missing_ok=True)
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write(console.export_text())  # Saves formatted text output
-        f.close()
+    output_file.write_text(console.export_text())  # Saves formatted text output
 
+    process.terminate()
 
 if __name__ == '__main__':
     main()
