@@ -43,12 +43,12 @@ import babel, babel.dates
 #
 #-------------------------------------------------------------------------
 
-verbosity = 0
-force = False
-ascendants = False
-descendants = False
-spouses = False
-LEVEL = 2
+# verbosity = 0
+# force = False
+# ascendants = False
+# descendants = False
+# spouses = False
+# LEVEL = 2
 
 ICLOUD_PATH = "."
 
@@ -132,12 +132,11 @@ rm locales/*/*/base.po
 potranslator build -l fr
 """
 
-import gettext
-locale = 'fr'
-translation = gettext.translation('base', localedir='locales', languages=[locale])
-translation.install()
-_ = translation.gettext
-
+# import gettext
+# locale = 'fr'
+# translation = gettext.translation('base', localedir='locales', languages=[locale])
+# translation.install()
+# _ = translation.gettext
 
 #-------------------------------------------------------------------------
 #
@@ -259,9 +258,6 @@ def convert_date(datetab):
         bd2 = babel.dates.parse_date(bd1, locale=locale)
     return(bd2.strftime("%Y-%m-%d"))
 
-def clean_ref( url ):
-    return re.sub( r'^/', '', urllib.parse.urlparse(url).path ) + "?" + clean_query( url )
-    
 def clean_query( url ):
     queries = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
     if len(queries) > 0:
@@ -271,7 +267,6 @@ def clean_query( url ):
         if len(removed_queries) > 0:
             display( "Removed queries: %s"%(removed_queries) )
 
-        # return urllib.parse.urlencode({k: v for k, v in queries.items() if k != 'lang'}, doseq=True)
         return urllib.parse.urlencode({k: v for k, v in queries.items() if k in queries_to_keep}, doseq=True)
     else:
         return url
@@ -289,11 +284,8 @@ def clean_text( html, md = True, links = False, images = False, emphasis = False
     else:
         return markdown.markdown( converter.handle( html ) )
 
-def encode_url( url ):
-    return url.replace('?','#').replace('=','_').replace('&','.')
-
-def decode_url( url ):
-    return clean_ref( url ).replace('#','?').replace('_','=').replace('.','&')
+def sanitize( str ):
+    return str.replace( '=', "_" ).replace( '+', " " ).replace( '&', "." )
 
 #-------------------------------------------------------------------------
 #
@@ -446,7 +438,8 @@ class GPerson(GBase):
 
     def __init__(self, url):
 
-        display(_("Person %s")%(url), level=2 )
+        display( "" )
+        display("Person: %s"%(url), level=2 )
 
         # Geneanet
         self._url = url
@@ -485,7 +478,7 @@ class GPerson(GBase):
 
     def _read_geneanet( self, url, force = True ):
 
-        output_file = clean_query(url).replace('&','.').replace('=','_').replace('+',' ')
+        output_file = sanitize( clean_query(url) )
 
         output_txt = ICLOUD_PATH / self._path / "html" / (output_file + ".txt")
 
@@ -534,18 +527,28 @@ class GPerson(GBase):
             # Get content in perso bloc
 
             soup = BeautifulSoup(browser.page_source, 'html.parser')
-            perso = soup.find("div", {"id": "perso"})
-
 
             # process PDF
             try:
-                output_pdf = output_pdf / (soup.title.string + ".pdf").replace(':','_')
+                output_pdf = output_pdf / output_file + ".pdf"
                 output_pdf.parent.mkdir(parents=True, exist_ok=True)
-                output_pdf.unlink(missing_ok=True)        
-                browser.execute_script('window.print();')
+                output_pdf.unlink(missing_ok=True)   
+
+                # Use Chrome DevTools Protocol (CDP) to print as PDF
+                pdf_settings = {
+                    "landscape": False,
+                    "displayHeaderFooter": False,
+                    "printBackground": True,
+                    "preferCSSPageSize": True
+                }
+
+                # Execute CDP command to save as PDF
+                pdf_data = browser.execute_cdp_cmd("Page.printToPDF", pdf_settings)
+
+                # Save PDF to file
+                output_pdf.write_bytes(bytearray(pdf_data['data'], encoding='utf-8'))
             except:
                 display( 'Failed to save PDF for %s'%(output_pdf))
-                pass
 
             # process perso
 
@@ -563,9 +566,11 @@ class GPerson(GBase):
 
         else:
             display( 'Read from %s'%(output_txt))
-            perso = BeautifulSoup( output_txt.read_text(), 'html.parser' )
+            soup = BeautifulSoup( output_txt.read_text(), 'html.parser' )
 
         # Parse content to sections
+
+        perso = soup.find("div", {"id": "perso"})
 
         contents = []
         # medias = []
@@ -598,7 +603,7 @@ class GPerson(GBase):
         except:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             message = f'Exception [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
-            print( message )
+            display( message, error=True )
             pass
 
         # process the clickable medias
@@ -636,7 +641,7 @@ class GPerson(GBase):
         if browser:
             browser.quit()
 
-        return perso, None, contents
+        return perso, None, None, contents
 
     # -------------------------------------------------------------------------
     # scrap_geneanet
@@ -646,7 +651,7 @@ class GPerson(GBase):
 
         # read web page
         
-        perso, medias, sections = self._read_geneanet( self._url )
+        perso, images, medias, sections = self._read_geneanet( self._url )
 
         for section in sections:
 
@@ -828,7 +833,11 @@ class GPerson(GBase):
         self._notes = None
 
         # -------------------------------------------------------------
-        # Medias
+        # Images
+        # -------------------------------------------------------------
+        
+        # -------------------------------------------------------------
+        # Images
         # -------------------------------------------------------------
         
         # if len(medias) > 0:
@@ -1041,6 +1050,22 @@ class GPersons(GBase):
             display( vars(family), title="Family: %s"%(str(key)) )
 
 ###################################################################################################################################
+# geneanetscrapping
+###################################################################################################################################
+
+def geneanetscrapping( person, ascendants=False, descendants=False, spouses=False, max_levels= 0, force=False):
+
+    try:
+        persons = GPersons( max_levels, ascendants, spouses, descendants )
+        persons.add_person( person, force )
+
+        persons.gedcom
+    except:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        message = f'Something went wrong with scrapping [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
+        display( message, error=True )
+
+###################################################################################################################################
 # main
 ###################################################################################################################################
 
@@ -1052,13 +1077,13 @@ def main():
     # global descendants
     # global spouses
 
-    global gedcom
-    global gedcomfile
-    global verbosity
-    global force
-    global translation
-    global locale
-    global _
+    # global gedcom
+    # global gedcomfile
+    # global verbosity
+    # global force
+    # global translation
+    # global locale
+    # global _
     global ICLOUD_PATH
 
     display( "GeneanetScrapping", level=1 )
@@ -1091,8 +1116,6 @@ def main():
     if max_levels == None:
         max_levels = 0
 
-    process= subprocess.Popen(["caffeinate", "-d"])
-
     header_gedcom_text = """
         0 HEAD
         1 GEDC
@@ -1101,29 +1124,34 @@ def main():
         1 CHAR UTF-8
         0 TRLR
     """
-    gedcom = gedcom.parse_string(header_gedcom_text)
 
     # Create data folder
 
     ICLOUD_PATH = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "GeneanetScrap"
     ICLOUD_PATH.mkdir(exist_ok=True)
 
-    # Create the first Person
+    # disable screenlock
 
-    try:
-        persons = GPersons( max_levels, ascendants, spouses, descendants )
-        persons.add_person( purl, force )
+    process= subprocess.Popen(["caffeinate", "-d"])
 
-        persons.gedcom
-    except:
-        pass
-    
+    # Scrap geneanet
+
+    geneanetscrapping( purl, ascendants, descendants, spouses, max_levels, force )
+
+    # enable screenlock
+
+    process.terminate()
+
+    # Save logs
+
     output_file = ICLOUD_PATH / "output" / f"logs_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.unlink(missing_ok=True)
     output_file.write_text(console.export_text())  # Saves formatted text output
 
-    console.clear()
+    # Save outcome
+    
+    #console.clear()
     console._record_buffer = []
 
     persons.print()
@@ -1131,9 +1159,7 @@ def main():
     output_file = ICLOUD_PATH / "output" / f"console_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.unlink(missing_ok=True)
-    output_file.write_text(console.export_text())  # Saves formatted text output
-
-    process.terminate()
+    output_file.write_text(console.export_text())
 
 if __name__ == '__main__':
     main()

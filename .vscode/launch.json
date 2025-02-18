@@ -45,7 +45,7 @@
             "request": "launch",
             "program": "GeneanetScrapping.py",
             "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/asempey?n=jantieu&p=margueritte&oc=0'"
+            "args": "'https://gw.geneanet.org/asempey?n=jantieu&p=margueritte&oc=0'  -l 50 -a -s -d"
         },
         {
             "name": "Léon 1",
@@ -61,7 +61,7 @@
             "request": "launch",
             "program": "GeneanetScrapping.py",
             "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/lipari?pz=alexia&nz=henry&p=leon+desire+louis&n=bessey' -l 20 -a -s"
+            "args": "'https://gw.geneanet.org/lipari?pz=alexia&nz=henry&p=leon+desire+louis&n=bessey' -l 50 -a -s -d"
         }
     ]
 }
