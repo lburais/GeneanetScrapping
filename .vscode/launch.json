@@ -8,58 +8,26 @@
 
 
         {
-            "name": "scrap",
+            "name": "List",
             "type": "debugpy",
             "request": "launch",
-            "program": "test_scrap.py",
+            "program": "GenealogyScrapping.py",
             "console": "integratedTerminal",
-            "args": ""
+            "args": "-l 5"
         },
         {
-            "name": "GeneanetScrapping (en)",
+            "name": "Single",
             "type": "debugpy",
             "request": "launch",
-            "program": "GeneanetScrapping.py",
+            "program": "GenealogyScrapping.py",
             "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/lipari?lang=en&pz=alexia&nz=henry&p=gabrielle+denise+josephine&n=bessey' -g gedcom.ged"
-        },
-        {
-            "name": "GeneanetScrapping (fr)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "GeneanetScrapping.py",
-            "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/lipari?lang=fr&pz=alexia&nz=henry&p=gabrielle+denise+josephine&n=bessey'"
-        },
-        {
-            "name": "Gabrielle",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "GeneanetScrapping.py",
-            "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/lipari?pz=alexia&nz=henry&p=gabrielle+denise+josephine&n=bessey'"
-        },
-        {
-            "name": "Marguerite",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "GeneanetScrapping.py",
-            "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/asempey?n=jantieu&p=margueritte&oc=0'  -l 50 -a -s -d"
-        },
-        {
-            "name": "Léon 1",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "GeneanetScrapping.py",
-            "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/lipari?pz=alexia&nz=henry&p=leon+desire+louis&n=bessey' -l 1"
+            "args": "'https://gw.geneanet.org/pierreb0142?lang=fr&p=marie&n=simon&oc=6' -l 0"
         },
         {
             "name": "Léon",
             "type": "debugpy",
             "request": "launch",
-            "program": "GeneanetScrapping.py",
+            "program": "GenealogyScrapping.py",
             "console": "integratedTerminal",
             "args": "'https://gw.geneanet.org/lipari?pz=alexia&nz=henry&p=leon+desire+louis&n=bessey' -l 50 -a -s -d"
         }

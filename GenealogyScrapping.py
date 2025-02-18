@@ -1,4 +1,4 @@
-# GeneanetScrapping
+# GenealogyScrapping
 #
 # Copyright (C) 2025  Laurent Burais
 #
@@ -12,7 +12,6 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# forked file: https://github.com/romjerome/GeneanetForGramps/blob/master/GeneanetForGramps.py
 
 #-------------------------------------------------------------------------
 #
@@ -63,6 +62,7 @@ from rich.table import Table
 from rich.prompt import Prompt
 from rich.traceback import install
 from rich.pretty import Pretty
+from rich.theme import Theme
 
 console = Console(record=True, width=132)
 
@@ -90,8 +90,7 @@ def display( what=None, title=None, level=0, error=False, exception=False ):
                 console.print_exception(show_locals=False, max_frames=1)
 
             elif error:
-                if verbose <= verbosity:
-                    console.print( Text( what, style="white on red" ), NL)
+                console.print( Text( what, style="white on red" ), NL)
 
             elif level == 1:
                 console.print( Panel( Text(what.upper(), style="white"), style="white on cyan" ), NL)
@@ -102,6 +101,11 @@ def display( what=None, title=None, level=0, error=False, exception=False ):
             else:
                 console.print( Text(what) )
 
+        elif isinstance( what, Markdown ):
+
+            #console.print( what.markup )
+            console.print( what )
+                
         elif what:
             pprint( what )
 
@@ -165,7 +169,7 @@ def format_ca(date):
     """
     # If ca for an about date, replace with vers (for now)
     if date[0:2] == "ca":
-        date = _("about")+date[2:]
+        date = "about"+date[2:]
     return(date)
 
 def format_year(date):
@@ -209,9 +213,6 @@ def convert_date(datetab):
     into an ISO date format
     '''
 
-    if verbosity >= 3:
-        print("datetab reçu :",datetab)
-
     if len(datetab) == 0:
         return(None)
 
@@ -236,16 +237,16 @@ def convert_date(datetab):
     if datetab[idx] == "1er":
         datetab[idx] = "1"
 
-    months = dict(babel.dates.get_month_names(width='wide', locale=locale))
+    months = dict(babel.dates.get_month_names(width='wide', locale='fr'))
 
     try:
         # day month year
         bd1 = datetab[idx]+" "+str(list(months.keys())[list(months.values()).index(datetab[idx+1])])+" "+datetab[idx+2][0:4]
-        bd2 = babel.dates.parse_date(bd1, locale=locale)
+        bd2 = babel.dates.parse_date(bd1, locale='fr')
     except:
         # month day, year
         bd1 = str(list(months.keys())[list(months.values()).index(datetab[idx])])+" "+datetab[idx+1]+" "+datetab[idx+2][0:4]
-        bd2 = babel.dates.parse_date(bd1, locale=locale)
+        bd2 = babel.dates.parse_date(bd1, locale='fr')
     return(bd2.strftime("%Y-%m-%d"))
 
 def clean_query( url ):
@@ -253,29 +254,73 @@ def clean_query( url ):
     if len(queries) > 0:
         queries_to_keep = [ 'm', 'v', 'p', 'n', 'oc', 'i' ]
 
-        removed_queries = {k: v for k, v in queries.items() if k not in queries_to_keep + ['lang', 'pz', 'nz']}
+        removed_queries = {k: v for k, v in queries.items() if k not in queries_to_keep + ['lang', 'pz', 'nz', 'iz']}
         if len(removed_queries) > 0:
             display( "Removed queries: %s"%(removed_queries) )
+
+        if 'n' not in queries:
+            queries['n'] = ""
+
+        if 'p' not in queries:
+            queries['p'] = ""
 
         return urllib.parse.urlencode({k: v for k, v in queries.items() if k in queries_to_keep}, doseq=True)
     else:
         return url
 
 def clean_text( html, md = True, links = False, images = False, emphasis = False ):
-    import html2text
+    import notes2text
     import markdown
 
-    converter = html2text.HTML2Text()
+    converter = notes2text.notes2text()
     converter.ignore_links = links
     converter.ignore_images = images
     converter.ignore_emphasis = emphasis
     if md:
-        return converter.handle( html )
+        return '\n'.join(line for line in converter.handle( html ).split('\n') if line.strip() != "")
     else:
         return markdown.markdown( converter.handle( html ) )
 
 def sanitize( str ):
     return str.replace( '=', "_" ).replace( '+', " " ).replace( '&', "." )
+
+def notes2text( str ):
+    output = ''
+    soup = BeautifulSoup(str, 'html.parser')
+    print(str)
+    try: # H2
+        title = '\n'.join(line for line in soup.find('h2').get_text().split('\n') if line.strip() != "").strip()
+        output = output + title + '\n' + "="*len(title) + '\n'*2
+    except:
+        pass
+
+    try: # LI
+        lines = soup.find_all('li')
+        for line in lines:
+            output = output + '- ' + ' '.join(line for line in line.get_text().replace('\n',' ').split(' ') if line.strip() != "").strip() + '\n'
+    except:
+        pass
+
+    try: # TABLE - TIMELINE beautifulsoup replace span by its content
+        table = soup.find('table', class_=re.compile(r'^ligne_vie'))
+        for row in table.find_all("tr"):
+            try:
+                cells = row.find_all("td")
+                print("---")
+                print(cells[1])
+                for tag in cells[1].find_all(['span', 'bdo', 'a']):
+                    tag.replace_with(tag.get_text())
+                cells[1].string = ' '.join(line for line in cells[1].get_text().split(' ') if line.strip() != "").strip()
+                print("---")
+                print(cells[1])
+                output = output + '- ' + ' '.join(line for line in cells[1].get_text().split(' ') if line.strip() != "").strip() + '\n'
+                #output = output + '- ' + ' '.join(line for line in cells[1].get_text().replace('\n',' ').split(' ') if line.strip() != "").strip() + '\n'
+            except:
+                pass
+    except:
+        pass
+
+    return output
 
 #-------------------------------------------------------------------------
 #
@@ -312,14 +357,14 @@ class GFamily(GBase):
         try:
             self._marriagedate = format_ca( convert_date(marriage.split(',')[0].split()[1:]) )
         except:
-            self._marriagedate = None
+            pass
 
         # marriage place
         try:
-            self._marriageplace = ', '.join([x for x in marriage.strip().split(',')[1:] if x]).strip()
+            self._marriageplace = marriage[marriage.find(',') + 1:].strip()
             self._marriageplace = ",".join( item.strip() for item in self._marriageplace.split(",") )
         except:
-            self._marriageplace = None
+            pass
 
         # spouses ref
         try:
@@ -330,43 +375,44 @@ class GFamily(GBase):
             self._spousesref = [ clean_query( personref ), None ]
 
         # annulation date
-        self._annulationdate = None
         if 'annulé' in family.get_text().lower():
             display("Add annulation processing")
+            self._annulationdate = None
 
         # divorce date
-        self._divorcedate = None
         if 'divorcé' in family.get_text().lower():
             display("Add divorce processing")
+            self._divorcedate = None
 
         # engagement date
-        self._engagementdate = None
         if 'annulé' in family.get_text().lower():
             display("Add engagement processing")
+            self._engagementdate = None
 
         # publish date
-        self._publishdate = None
         if 'bans' in family.get_text().lower():
             display("Add publish processing")
+            self._publishdate = None
 
         # license date
-        self._licensedate = None
         if 'license' in family.get_text().lower():
             display("Add license processing")
+            self._licensedate = None
 
         # separation date
-        self._separationdate = None
         if 'séparé' in family.get_text().lower():
             display("Add separation processing")
+            self._separationdate = None
 
         # childs
-        self._childsref = []
+        childsref = []
         try:
             for item in family.find("ul").find_all( "li", recursive=False ):
                 # first <a> can be a ref to sosa
-                self._childsref = self._childsref + [ clean_query( [a for a in item.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
+                childsref = childsref + [ clean_query( [a for a in item.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
+            self._childsref = childsref
         except:
-            self._childsref = []
+            pass
 
     # -------------------------------------------------------------------------
     # setids
@@ -424,7 +470,7 @@ class GPerson(GBase):
     # -------------------------------------------------------------------------
     # __init__
     # -------------------------------------------------------------------------
-    # url : geneanet url
+    # url : genealogy url
 
     def __init__(self, url):
 
@@ -440,13 +486,13 @@ class GPerson(GBase):
         self._id = None
 
         self._portrait = {
-            'firstname' : "",
-            'lastname' : "",
-            'sex' : "U",
-            'birthdate' : None,
-            'birthplace' : "",
-            'deathdate' : None,
-            'deathplace' : ""
+            # 'firstname' : "",
+            # 'lastname' : "",
+            # 'sex' : "U",
+            # 'birthdate' : None,
+            # 'birthplace' : "",
+            # 'deathdate' : None,
+            # 'deathplace' : ""
         }
 
         self._parentsref = []
@@ -455,12 +501,13 @@ class GPerson(GBase):
 
         self._families = []
 
-        self._medias = []
-
         self._notes = ""
 
-        # scrap geneanet page
-        self.scrap_geneanet()
+        if 'geneanet' in url:
+            # scrap geneanet page
+            self.scrap_geneanet()
+        else:
+            display( "Add processing for %"%(url), error=True )
 
     # -------------------------------------------------------------------------
     # _read_geneanet
@@ -470,7 +517,7 @@ class GPerson(GBase):
 
         output_file = sanitize( clean_query(url) )
 
-        output_txt = ICLOUD_PATH / self._path / "html" / (output_file + ".txt")
+        output_txt = ICLOUD_PATH / self._path / (output_file + ".txt")
 
         # force fr language
 
@@ -485,6 +532,8 @@ class GPerson(GBase):
 
         if force == False or not output_txt.exists():
 
+            display( 'Load from %s'%(url))
+
             # Chrome setup
 
             chrome_options = webdriver.ChromeOptions()
@@ -493,7 +542,7 @@ class GPerson(GBase):
             chrome_options.add_argument("--disable-gpu")  # Disables GPU acceleration (helpful in some cases)
 
             # Configure Chrome print settings to save as PDF
-            output_pdf = ICLOUD_PATH / self._path / "pdf"
+            output_pdf = ICLOUD_PATH / self._path
             chrome_options.add_experimental_option("prefs", {
                 "printing.print_preview_sticky_settings.appState": '{"recentDestinations":[{"id":"Save as PDF","origin":"local"}],"selectedDestinationId":"Save as PDF","version":2}',
                 "savefile.default_directory": str(output_pdf)
@@ -539,7 +588,7 @@ class GPerson(GBase):
                 # Save PDF to file
                 output_pdf.write_bytes(base64.b64decode(pdf_data["data"]))
             except:
-                display( 'Failed to save PDF: %s'%(output_pdf))
+                display( 'Failed to save PDF: %s'%(output_pdf), error=True )
 
             # process perso
 
@@ -552,7 +601,7 @@ class GPerson(GBase):
 
                 output_txt.write_text( perso.prettify() )
             except:
-                display( 'Failed to save HTML: %s'%(output_txt))
+                display( 'Failed to save HTML: %s'%(output_txt), error=True )
 
 
         else:
@@ -577,16 +626,25 @@ class GPerson(GBase):
             comments = perso.find_all(string=lambda text: isinstance(text, Comment))
 
             for comment in comments:
-                if ' ng' in comment or 'Arbre' in comment:
+                if ' ng' in comment or 'arbre' in comment.lower():
                     continue
 
+                # Extract comment section
                 extracted_content = []
                 for sibling in comment.next_siblings:
                     if isinstance( sibling, Comment ):
                         break
                     extracted_content.append(str(sibling))
+                extracted_soup = BeautifulSoup( ''.join([i for i in extracted_content if i != '\n']), 'html.parser' )
 
-                contents = contents + [Section( comment.strip(), BeautifulSoup( ''.join([i for i in extracted_content if i != '\n']), 'html.parser' ) )]
+                # Remove <a> tags with href containing "javascript"
+                a_tags = extracted_soup.find_all('a')
+                for a_tag in a_tags:
+                    href = a_tag.get('href')
+                    if href and 'javascript' in href.lower():
+                        a_tag.decompose()
+
+                contents = contents + [Section( comment.strip(), extracted_soup )]
 
                 comment.extract()
 
@@ -594,7 +652,6 @@ class GPerson(GBase):
             exc_type, exc_obj, exc_tb = sys.exc_info()
             message = f'Exception [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
             display( message, error=True )
-            pass
 
         # process the clickable medias
 
@@ -641,7 +698,7 @@ class GPerson(GBase):
 
         # read web page
         
-        perso, images, medias, sections = self._read_geneanet( self._url )
+        perso, images, acts, sections = self._read_geneanet( self._url )
 
         for section in sections:
 
@@ -654,8 +711,8 @@ class GPerson(GBase):
                 try:
                     names = section.content.find("div", {"id" : "person-title"}).find_all_next("a")
 
-                    self._portrait['firstname'] = names[0].get_text().title()
-                    self._portrait['lastname'] = names[1].get_text().title()
+                    self._portrait['firstname'] = names[0].get_text().replace('\n', '').strip().title()
+                    self._portrait['lastname'] = names[1].get_text().replace('\n', '').strip().title()
                 except:
                     pass
 
@@ -673,7 +730,7 @@ class GPerson(GBase):
                 try:
                     birth = section.content.find_all('li', string=lambda text: "Né" in text if text else False)[0].get_text()
                 except:
-                    birth = ""
+                    birth = None
 
                 try:
                     self._portrait['birthdate'] = format_ca( convert_date(birth.split('-')[0].split()[1:]) )
@@ -681,19 +738,16 @@ class GPerson(GBase):
                     pass
 
                 try:
-                    self._portrait['birthplace'] = str(birth.split(' - ')[1])
+                    self._portrait['birthplace'] = birth[birth.find('-') + 1:].strip()
                     self._portrait['birthplace'] = ",".join( item.strip() for item in self._portrait['birthplace'].split(",") )
                 except:
-                    if len(birth) < 1:
-                        pass
-                    else:
-                        self._portrait['birthplace'] = str(uuid.uuid3(uuid.NAMESPACE_URL, self._url))
+                    pass
 
                 # death
                 try:
                     death = section.content.find_all('li', string=lambda text: "Décédé" in text if text else False)[0].get_text()
                 except:
-                    death = ""
+                    death = None
 
                 try:
                     self._portrait['deathdate'] = format_ca( convert_date(death.split('-')[0].split()[1:]) )
@@ -701,34 +755,57 @@ class GPerson(GBase):
                     pass
 
                 try:
-                    self._portrait['deathplace'] = re.split(f"{re.escape(",\nà l'âge")}|{re.escape(", à l'âge")}", str(death.split(' - ')[1]))[0]
+                    self._portrait['deathplace'] = re.split(f"{re.escape(",\nà l'âge")}|{re.escape(", à l'âge")}", death[death.find('-') + 1:].strip())[0]
                     self._portrait['deathplace'] = ",".join( item.strip() for item in self._portrait['deathplace'].split(",") )
                 except:
-                    if len(death ) < 1:
-                        pass
-                    else:
-                        self._portrait['deathplace'] = str(uuid.uuid3(uuid.NAMESPACE_URL, self._url))
+                    pass
 
                 # baptem
                 try:
                     baptem = section.content.find_all('li', string=lambda text: "baptisé" in text.lower() if text else False)[0].get_text()
-                    display("Add baptem processing")
+                    display("Processing baptem ")
                 except:
-                    baptem = ""
+                    baptem = None
 
-                # occupation
                 try:
-                    occupation = section.content.find_all('li', string=lambda text: "employé" in text.lower() if text else False)[0].get_text()
-                    display("Add occupation processing")
+                    self._portrait['baptemdate'] = format_ca( convert_date(baptem.split('-')[0].split()[1:]) )
                 except:
-                    occupation = ""
+                    pass
+
+                try:
+                    self._portrait['baptemplace'] = baptem[baptem.find('-') + 1:].strip()
+                    self._portrait['baptemplace'] = ",".join( item.strip() for item in self._portrait['baptemplace'].split(",") )
+                except:
+                    pass
 
                 # burial
                 try:
                     burial = section.content.find_all('li', string=lambda text: "inhumé" in text.lower() if text else False)[0].get_text()
-                    display("Add burial processing")
+                    display("Processing burial")
                 except:
-                    burial = ""
+                    burial = None
+
+                try:
+                    self._portrait['burialdate'] = format_ca( convert_date(burial.split('-')[0].split()[1:]) )
+                except:
+                    pass
+
+                try:
+                    self._portrait['burialplace'] = burial[burial.find('-') + 1:].strip()
+                    self._portrait['burialplace'] = ",".join( item.strip() for item in self._portrait['burialplace'].split(",") )
+                except:
+                    pass
+
+                # occupation
+                try:
+                    lines = section.content.find_all('li')
+                    for line in lines:
+                        if 'né' not in line.get_text() and 'décédé' not in line.get_text() and 'baptisé' not in line.get_text() and 'inhumé' not in line.get_text():
+                            display("Processing occupation: %s"%(self._occupation))
+                            self._occupation = line.get_text()
+                            break
+                except:
+                    occupation = ""
 
                 # adoption
                 try:
@@ -763,7 +840,7 @@ class GPerson(GBase):
             # -------------------------------------------------------------
             # Freres et Soeurs section
             # -------------------------------------------------------------
-            elif 'freres et soeurs complet' in section.name.lower():
+            elif 'freres et soeurs' in section.name.lower():
                 try:
                     for item in section.content.find("ul").find_all( "li", recursive=False ):
                         tag_a = item.find('a')
@@ -774,20 +851,27 @@ class GPerson(GBase):
                     pass
 
             # -------------------------------------------------------------
+            # Famille section
+            # -------------------------------------------------------------
+            elif 'famille' in section.name.lower():
+                if len(section.content) > 0:
+                    display("Add processing for section: %s"%(section.name))
+
+            # -------------------------------------------------------------
             # Relation section
             # -------------------------------------------------------------
             elif 'relation' in section.name.lower():
                 if len(section.content) > 0:
-                    display("Add processing for section: %s"%(section.name))
-                    self._notes = self._notes + clean_text( str(section.content) )
+                    # self._notes = self._notes + clean_text( str(section.content) )
+                    self._notes = self._notes + ('\n' if len(self._notes) > 0 else '') + notes2text( str(section.content) )
 
             # -------------------------------------------------------------
             # Related section
             # -------------------------------------------------------------
             elif 'related' in section.name.lower():
                 if len(section.content) > 0:
-                    display("Add processing for section: %s"%(section.name))
-                    self._notes = self._notes + clean_text( str(section.content) )
+                    # self._notes = self._notes + clean_text( str(section.content) )
+                    self._notes = self._notes + ('\n' if len(self._notes) > 0 else '') + notes2text( str(section.content) )
 
             # -------------------------------------------------------------
             # Notes section
@@ -795,12 +879,12 @@ class GPerson(GBase):
             elif 'notes' in section.name.lower():
                 if 'timeline' in section.name.lower():
                     if len(section.content) > 0:
-                        display("Add processing for section: %s"%(section.name))
-                        self._notes = self._notes + clean_text( str(section.content) )
+                        # self._notes = self._notes + clean_text( str(section.content) )
+                        self._notes = self._notes + ('\n' if len(self._notes) > 0 else '') + notes2text( str(section.content) )
                 else:
                     if len(section.content) > 0:
-                        display("Add processing for section: %s"%(section.name))
-                        self._notes = self._notes + clean_text( str(section.content) )
+                        # self._notes = self._notes + clean_text( str(section.content) )
+                        self._notes = self._notes + ('\n' if len(self._notes) > 0 else '') + notes2text( str(section.content) )
 
             # -------------------------------------------------------------
             # Sources section
@@ -808,8 +892,14 @@ class GPerson(GBase):
             elif 'sources' in section.name.lower():
                 if len(section.content) > 0:
                     try:
-                        display("Add processing for section: %s"%(section.name))
-                        self._notes = self._notes +  clean_text( section.content.find( "div", {"ng-non-bindable" : ""} ).decode_contents() )
+                        # Remove all elements before the <h2> tag
+                        h2_element = section.content.find('h2')
+                        if h2_element:
+                            for element in h2_element.find_all_previous():
+                                element.decompose()
+                        if len(section.content) > 0:
+                            # self._notes = self._notes + clean_text( str(section.content) )
+                            self._notes = self._notes + notes2text( str(section.content) )
                     except:
                         pass
 
@@ -820,7 +910,7 @@ class GPerson(GBase):
                 if len(section.content) > 0:
                     display("Add processing for section: %s"%(section.name))
 
-        self._notes = None
+        pass
 
         # -------------------------------------------------------------
         # Acts
@@ -887,6 +977,13 @@ class GPerson(GBase):
                     self._familiesid = self._familiesid + [ families_table[tuple(family._spousesref)[::-1]] ]
                 except:
                     self._familiesid = self._familiesid + [ None ]
+
+    # -------------------------------------------------------------------------
+    # notes
+    # -------------------------------------------------------------------------
+    @property
+    def notes(self):
+        return self._notes
 
     # -------------------------------------------------------------------------
     # portrait
@@ -1032,16 +1129,29 @@ class GPersons(GBase):
         display( self._families, title="%d Families"%(len(self._families)) )
 
         for key, person in self._persons.items():
-            display( vars(person), title="Person: %s"%(key) )
+            p = vars(person).copy()
+            del p['_notes']
+            display( p, title="Person: %s"%(key) )
+            if person.notes != "":
+                display( person.notes, title="" )
 
         for key, family in self._families.items():
             display( vars(family), title="Family: %s"%(str(key)) )
 
 ###################################################################################################################################
-# geneanetscrapping
+# genealogyscrapping
 ###################################################################################################################################
 
-def geneanetscrapping( person, ascendants=False, descendants=False, spouses=False, max_levels= 0, force=False):
+def genealogyscrapping( person, ascendants=False, descendants=False, spouses=False, max_levels= 0, force=False):
+
+    header_gedcom_text = """
+        0 HEAD
+        1 GEDC
+        2 VERS 5.5
+        2 FORM LINEAGE-LINKED
+        1 CHAR UTF-8
+        0 TRLR
+    """
 
     try:
         persons = GPersons( max_levels, ascendants, spouses, descendants )
@@ -1061,25 +1171,28 @@ def geneanetscrapping( person, ascendants=False, descendants=False, spouses=Fals
 
 def main():
 
+    console.clear()
+
+    display( "GenealogyScrapping", level=1 )
+
+    # Create data folder
+
     global ICLOUD_PATH
 
-    display( "GeneanetScrapping", level=1 )
+    ICLOUD_PATH = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "GeneanetScrap"
+    ICLOUD_PATH.mkdir(exist_ok=True)
 
-    parser = argparse.ArgumentParser(description="Export Geneanet subtrees into GEDCOM file")
+    # Process parameters
+
+    parser = argparse.ArgumentParser(description="Export genealogy subtrees into GEDCOM file")
     parser.add_argument("-a", "--ascendants", default=False, action='store_true', help="Includes ascendants (off by default)")
     parser.add_argument("-d", "--descendants", default=False, action='store_true', help="Includes descendants (off by default)")
     parser.add_argument("-s", "--spouses", default=False, action='store_true', help="Includes all spouses (off by default)")
     parser.add_argument("-l", "--level", default=0, type=int, help="Number of level to explore (0 by default)")
     parser.add_argument("-g", "--gedcom", type=str, help="Full path of the GEDCOM file to output")
-    parser.add_argument("-f", "--force", default=False, action='store_true', help="Force processing (off by default)")
+    parser.add_argument("-f", "--force", default=False, action='store_true', help="Force preloading web page (off by default)")
     parser.add_argument("searchedperson", type=str, nargs='?', help="Url of the person to search in Geneanet")
     args = parser.parse_args()
-
-    if args.searchedperson == None:
-        print("Veuillez indiquer une personne à rechercher")
-        return -1
-    else:
-        purl = args.searchedperson
 
     gedcom = args.gedcom
     force = args.force
@@ -1091,52 +1204,78 @@ def main():
     if max_levels == None:
         max_levels = 0
 
-    header_gedcom_text = """
-        0 HEAD
-        1 GEDC
-        2 VERS 5.5
-        2 FORM LINEAGE-LINKED
-        1 CHAR UTF-8
-        0 TRLR
-    """
+    if args.searchedperson == None:
 
-    # Create data folder
+        searchedpersons = [
+            'https://gw.geneanet.org/lipari?p=leon+desire+louis&n=bessey',              # lipari - Léon Désiré Louis Bessey
+            'https://gw.geneanet.org/asempey?n=jantieu&p=margueritte&oc=0',             # asempey - Marguerite Jantieu
+            'https://gw.geneanet.org/iraird?p=nicholas&n=le+teuton',                    # iraird - Nicholas le Teuton
+            'https://gw.geneanet.org/plongeur?p=charlotte+marie&n=postel',              # plongeur - Charlotte Marie Postel
+            'https://gw.geneanet.org/sarahls?p=marcel+marius&n=lhomme',                 # sarahls - Marcel Marius Lhomme
+            'https://gw.geneanet.org/balcaraz?n=stefani&oc=1&p=leonard',                # balcaraz - Léonard Stéphani
+            'https://gw.geneanet.org/zeking?iz=2&p=6+2+leonard&n=stefani',              # zeking - Léonard Stéphani
+            'https://gw.geneanet.org/sanso2b?p=romain+jean+michel&n=burais',            # sanso2b - Romain Jean Michel Burais
+            'https://gw.geneanet.org/zlc061?p=marie+rose&n=cler&oc=1',                  # zlc061 - Marie Rose Cler
+            'https://gw.geneanet.org/comrade28?iz=0&p=nicholas&n=de+bacqueville',       # comrade28 - Nicholas de Bacqueville
+            'https://gw.geneanet.org/12marcel?p=marie+rose&n=cler',                     # 12marcel - Marie Rose Cler
+            'https://gw.geneanet.org/pierreb0142?p=desire+antonin&n=bessey',            # pierre0142 - Désiré Antonin Bessey
+            # 'https://gw.geneanet.org/alandur',                                        # alandur
+            # 'https://gw.geneanet.org/domale',                                         # domale
+            # 'https://gw.geneanet.org/malugi',                                         # malugi
+        ]
 
-    ICLOUD_PATH = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "GeneanetScrap"
-    ICLOUD_PATH.mkdir(exist_ok=True)
+    else:
+        searchedpersons = [ args.searchedperson ]
 
-    # disable screenlock
+    params = {
+        'gedcom' : gedcom,
+        'force' : force,
+        'ascendants' : ascendants,
+        'descendants' : descendants,
+        'spouses' : spouses,
+        'max_levels' : max_levels,
+        'searchedpersons' : searchedpersons
+    }
+    display( params, title="Paramùeters")
 
-    process= subprocess.Popen(["caffeinate", "-d"])
+    # Process searched persons
 
-    # Scrap geneanet
+    for searchedperson in searchedpersons:
 
-    persons = geneanetscrapping( purl, ascendants, descendants, spouses, max_levels, force )
+        userid = re.sub( r'^/', '', urllib.parse.urlparse(searchedperson).path )
 
-    # enable screenlock
+        # disable screenlock
 
-    process.terminate()
+        process= subprocess.Popen(["caffeinate", "-d"])
 
-    # Save logs
+        # Scrap geneanet
 
-    display( "" )
+        persons = genealogyscrapping( searchedperson, ascendants, descendants, spouses, max_levels, force )
 
-    output_file = ICLOUD_PATH / "output" / f"logs_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    output_file.unlink(missing_ok=True)
-    output_file.write_text(console.export_text())  # Saves formatted text output
+        # enable screenlock
 
-    # Save outcome
-    
-    #console.clear()
-    console._record_buffer = []
+        process.terminate()
 
-    persons.print()
+        # Save logs
 
-    output_file = ICLOUD_PATH / "output" / f"console_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    output_file.unlink(missing_ok=True)
-    output_file.write_text(console.export_text())
+        display( "" )
+
+        #output_file = ICLOUD_PATH / "output" / f"{userid}_logs_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
+        output_file = ICLOUD_PATH / "output" / f"{userid}_logs.txt"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.unlink(missing_ok=True)
+        output_file.write_text(console.export_text())  # Saves formatted text output
+
+        # Save outcome
+        
+        console._record_buffer = []
+
+        persons.print()
+
+        output_file = ICLOUD_PATH / "output" / f"{userid}_console.txt"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.unlink(missing_ok=True)
+        output_file.write_text(console.export_text())
 
 if __name__ == '__main__':
     main()
