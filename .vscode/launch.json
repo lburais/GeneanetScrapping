@@ -21,7 +21,7 @@
             "request": "launch",
             "program": "GeneanetScrapping.py",
             "console": "integratedTerminal",
-            "args": "-v 'https://gw.geneanet.org/lipari?lang=en&pz=alexia&nz=henry&p=gabrielle+denise+josephine&n=bessey' -g gedcom.ged"
+            "args": "'https://gw.geneanet.org/lipari?lang=en&pz=alexia&nz=henry&p=gabrielle+denise+josephine&n=bessey' -g gedcom.ged"
         },
         {
             "name": "GeneanetScrapping (fr)",

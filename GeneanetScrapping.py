@@ -34,6 +34,7 @@ from collections import namedtuple
 from datetime import datetime
 from pathlib import Path
 import subprocess
+import base64
 
 import babel, babel.dates
 
@@ -43,16 +44,7 @@ import babel, babel.dates
 #
 #-------------------------------------------------------------------------
 
-# verbosity = 0
-# force = False
-# ascendants = False
-# descendants = False
-# spouses = False
-# LEVEL = 2
-
 ICLOUD_PATH = "."
-
-persons = {}
 
 #-------------------------------------------------------------------------
 #
@@ -80,12 +72,10 @@ HEADER3 = 3
 
 NL = '\n'
 
-def display( what=None, title=None, level=0, verbose=0, error=False, exception=False ):
+def display( what=None, title=None, level=0, error=False, exception=False ):
     """
     My function to display various type of objects
     """
-
-    global verbosity
 
     try:
         if isinstance( what, list ):
@@ -109,7 +99,7 @@ def display( what=None, title=None, level=0, verbose=0, error=False, exception=F
             elif level > 1:
                 console.print( Panel( Text(what), style="cyan" ), NL)
 
-            elif verbose <= verbosity:
+            else:
                 console.print( Text(what) )
 
         elif what:
@@ -527,28 +517,29 @@ class GPerson(GBase):
             # Get content in perso bloc
 
             soup = BeautifulSoup(browser.page_source, 'html.parser')
+            perso = soup.find("div", {"id": "perso"})
 
             # process PDF
             try:
-                output_pdf = output_pdf / output_file + ".pdf"
+                output_pdf = output_pdf / (output_file + ".pdf")
                 output_pdf.parent.mkdir(parents=True, exist_ok=True)
                 output_pdf.unlink(missing_ok=True)   
 
                 # Use Chrome DevTools Protocol (CDP) to print as PDF
                 pdf_settings = {
                     "landscape": False,
-                    "displayHeaderFooter": False,
-                    "printBackground": True,
-                    "preferCSSPageSize": True
+                    "displayHeaderFooter": True,
+                    "printBackground": False,
+                    # "preferCSSPageSize": True
                 }
 
                 # Execute CDP command to save as PDF
                 pdf_data = browser.execute_cdp_cmd("Page.printToPDF", pdf_settings)
 
                 # Save PDF to file
-                output_pdf.write_bytes(bytearray(pdf_data['data'], encoding='utf-8'))
+                output_pdf.write_bytes(base64.b64decode(pdf_data["data"]))
             except:
-                display( 'Failed to save PDF for %s'%(output_pdf))
+                display( 'Failed to save PDF: %s'%(output_pdf))
 
             # process perso
 
@@ -561,19 +552,18 @@ class GPerson(GBase):
 
                 output_txt.write_text( perso.prettify() )
             except:
-                pass
+                display( 'Failed to save HTML: %s'%(output_txt))
 
 
         else:
             display( 'Read from %s'%(output_txt))
-            soup = BeautifulSoup( output_txt.read_text(), 'html.parser' )
+            perso = BeautifulSoup( output_txt.read_text(), 'html.parser' )
 
         # Parse content to sections
 
-        perso = soup.find("div", {"id": "perso"})
-
         contents = []
-        # medias = []
+        # acts = []
+        # images = []
 
         Section = namedtuple("Section", "name content")
 
@@ -833,7 +823,7 @@ class GPerson(GBase):
         self._notes = None
 
         # -------------------------------------------------------------
-        # Images
+        # Acts
         # -------------------------------------------------------------
         
         # -------------------------------------------------------------
@@ -999,8 +989,6 @@ class GPersons(GBase):
             except:
                 pass
 
-            # display( vars(self._persons[ref]), title=ref )
-
             if level < self._max_level:
 
                 if self._ascendants:
@@ -1065,37 +1053,25 @@ def geneanetscrapping( person, ascendants=False, descendants=False, spouses=Fals
         message = f'Something went wrong with scrapping [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
         display( message, error=True )
 
+    return persons
+
 ###################################################################################################################################
 # main
 ###################################################################################################################################
 
 def main():
 
-    # global allow local modification of these global variables
-    # global LEVEL
-    # global ascendants
-    # global descendants
-    # global spouses
-
-    # global gedcom
-    # global gedcomfile
-    # global verbosity
-    # global force
-    # global translation
-    # global locale
-    # global _
     global ICLOUD_PATH
 
     display( "GeneanetScrapping", level=1 )
 
     parser = argparse.ArgumentParser(description="Export Geneanet subtrees into GEDCOM file")
-    # parser.add_argument("-v", "--verbosity", action="count", default=0, help="Increase verbosity")
     parser.add_argument("-a", "--ascendants", default=False, action='store_true', help="Includes ascendants (off by default)")
     parser.add_argument("-d", "--descendants", default=False, action='store_true', help="Includes descendants (off by default)")
     parser.add_argument("-s", "--spouses", default=False, action='store_true', help="Includes all spouses (off by default)")
     parser.add_argument("-l", "--level", default=0, type=int, help="Number of level to explore (0 by default)")
-    parser.add_argument("-g", "--gedcomfile", type=str, help="Full path of the out GEDCOM")
-    parser.add_argument("-f", "--force", default=False, action='store_true', help="Force processing")
+    parser.add_argument("-g", "--gedcom", type=str, help="Full path of the GEDCOM file to output")
+    parser.add_argument("-f", "--force", default=False, action='store_true', help="Force processing (off by default)")
     parser.add_argument("searchedperson", type=str, nargs='?', help="Url of the person to search in Geneanet")
     args = parser.parse_args()
 
@@ -1105,8 +1081,7 @@ def main():
     else:
         purl = args.searchedperson
 
-    gedcomfile = args.gedcomfile
-    # verbosity = args.verbosity
+    gedcom = args.gedcom
     force = args.force
     ascendants = args.ascendants
     descendants = args.descendants
@@ -1136,13 +1111,15 @@ def main():
 
     # Scrap geneanet
 
-    geneanetscrapping( purl, ascendants, descendants, spouses, max_levels, force )
+    persons = geneanetscrapping( purl, ascendants, descendants, spouses, max_levels, force )
 
     # enable screenlock
 
     process.terminate()
 
     # Save logs
+
+    display( "" )
 
     output_file = ICLOUD_PATH / "output" / f"logs_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
     output_file.parent.mkdir(parents=True, exist_ok=True)
