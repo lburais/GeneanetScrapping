@@ -157,59 +157,13 @@ from selenium.webdriver.chrome.service import Service
 #
 #-------------------------------------------------------------------------
 
-Date = namedtuple( "Date", "Day Month Year")
-
-def format_ca(date):
-    """
-    Change the 'ca' chain into the 'vers' chain for now in Geneanet analysis
-    """
-    # If ca for an about date, replace with vers (for now)
-    if date[0:2] == "ca":
-        date = "about"+date[2:]
-    return(date)
-
-def format_year(date):
-    """
-    Remove potential empty month/day coming from Gramps (00)
-    """
-    if not date:
-        return(date)
-    if (date[-6:] == "-00-00"):
-        return(date[0:-6])
-    else:
-        return(date)
-
-def format_iso(date_tuple):
-    """
-    Format an iso date.
-    """
-    year, month, day = date_tuple
-    # Format with a leading 0 if needed
-    month = str(month).zfill(2)
-    day = str(day).zfill(2)
-    if year == None or year == 0:
-       iso_date = ''
-    elif month == None or month == 0:
-       iso_date = str(year)
-    elif day == None or day == 0:
-        iso_date = '%s-%s' % (year, month)
-    else:
-        iso_date = '%s-%s-%s' % (year, month, day)
-    return iso_date
-
-def format_noniso(date_tuple):
-    """
-    Format an non-iso tuple into an iso date
-    """
-    day, month, year = date_tuple
-    return(format_iso(year, month, day))
-
 def convert_date(datetab):
     ''' Convert the french date format for birth/death/married lines
     into an ISO date format
     '''
 
     convert = {
+        'ca': 'ABT',
         'à propos': 'ABT',
         'estimé': 'EST',
         'après': 'AFT',
@@ -218,58 +172,62 @@ def convert_date(datetab):
         'et': 'AND'
     }
 
-    if len(datetab) == 0:
-        return(None)
-
-    idx = 0
-
-    # Assuming there is just a year and last element is the year
-
-    if len(datetab) == 1 or datetab[0] == 'en':
-        # avoid a potential month
-        if datetab[-1].isalpha():
-            return(datetab[-1][0:4])
-
-        # avoid a potential , after the year
-        elif datetab[-1].isnumeric():
-            return(datetab[-1][0:4])
-
-    # Between date
-
-    if datetab[0] == 'entre':
-        try:
-            index = datetab.index("et")
-            return(convert[datetab[0]]+" "+convert_date(datetab[1:index])+" "+convert[datetab[index]]+" "+convert_date(datetab[index+1:]))
-        except ValueError:
-            pass
-
-    # Having prefix
-
-    if datetab[0] in list(convert.keys()):
-        return(convert[datetab[0]]+" "+convert_date(datetab[1:]))
-
-    # Skip 'le' prefix
-
-    if datetab[0] == 'le':
-        idx = 1
-
-    # In case of french language remove the 'er' prefix
-
-    if datetab[idx] == "1er":
-        datetab[idx] = "1"
-
-    months = dict(babel.dates.get_month_names(width='wide', locale='fr'))
-
     try:
-        # day month year
-        bd1 = datetab[idx]+" "+str(list(months.keys())[list(months.values()).index(datetab[idx+1])])+" "+datetab[idx+2][0:4]
-        bd2 = babel.dates.parse_date(bd1, locale='fr')
-    except:
-        # day monthnum year 
-        bd1 = datetab[idx]+" "+datetab[idx+1]+" "+datetab[idx+2][0:4]
-        bd2 = babel.dates.parse_date(bd1, locale='fr')
+        if len(datetab) == 0:
+            return(None)
 
-    return(bd2.strftime("%d %b %Y").upper())
+        idx = 0
+
+        # Assuming there is just a year and last element is the year
+
+        if len(datetab) == 1 or datetab[0] == 'en':
+            # avoid a potential month
+            if datetab[-1].isalpha():
+                return(datetab[-1][0:4])
+
+            # avoid a potential , after the year
+            elif datetab[-1].isnumeric():
+                return(datetab[-1][0:4])
+
+        # Between date
+
+        if datetab[0] == 'entre':
+            try:
+                index = datetab.index("et")
+                return(convert[datetab[0]]+" "+convert_date(datetab[1:index])+" "+convert[datetab[index]]+" "+convert_date(datetab[index+1:]))
+            except ValueError:
+                pass
+
+        # Having prefix
+
+        if datetab[0] in list(convert.keys()):
+            return(convert[datetab[0]]+" "+convert_date(datetab[1:]))
+
+        # Skip 'le' prefix
+
+        if datetab[0] == 'le':
+            idx = 1
+
+        # In case of french language remove the 'er' prefix
+
+        if datetab[idx] == "1er":
+            datetab[idx] = "1"
+
+        months = dict(babel.dates.get_month_names(width='wide', locale='fr'))
+
+        try:
+            # day month year
+            bd1 = datetab[idx]+" "+str(list(months.keys())[list(months.values()).index(datetab[idx+1])])+" "+datetab[idx+2][0:4]
+            bd2 = babel.dates.parse_date(bd1, locale='fr')
+        except:
+            # day monthnum year 
+            bd1 = datetab[idx]+" "+datetab[idx+1]+" "+datetab[idx+2][0:4]
+            bd2 = babel.dates.parse_date(bd1, locale='fr')
+
+        return(bd2.strftime("%d %b %Y").upper())
+    except:
+        display( "Date error: %s"%(' '.join(datetab)), error=True )
+        return "UNKNOW"
 
 #-------------------------------------------------------------------------
 #
@@ -623,7 +581,7 @@ class Geneanet:
                 
         # marriage date
         try:
-            family._marriagedate = format_ca( convert_date(marriage.split(',')[0].split()[1:]) )
+            family._marriagedate = convert_date(marriage.split(',')[0].split()[1:])
         except:
             pass
 
@@ -731,7 +689,7 @@ class Geneanet:
                         birth = None
 
                     try:
-                        person._portrait['birthdate'] = format_ca( convert_date(birth.split('-')[0].split()[1:]) )
+                        person._portrait['birthdate'] = convert_date(birth.split('-')[0].split()[1:])
                     except:
                         pass
 
@@ -748,7 +706,7 @@ class Geneanet:
                         death = None
 
                     try:
-                        person._portrait['deathdate'] = format_ca( convert_date(death.split('-')[0].split()[1:]) )
+                        person._portrait['deathdate'] = convert_date(death.split('-')[0].split()[1:])
                     except:
                         pass
 
@@ -766,7 +724,7 @@ class Geneanet:
                         baptem = None
 
                     try:
-                        person._portrait['baptemdate'] = format_ca( convert_date(baptem.split('-')[0].split()[1:]) )
+                        person._portrait['baptemdate'] = convert_date(baptem.split('-')[0].split()[1:])
                     except:
                         pass
 
@@ -784,7 +742,7 @@ class Geneanet:
                         burial = None
 
                     try:
-                        person._portrait['burialdate'] = format_ca( convert_date(burial.split('-')[0].split()[1:]) )
+                        person._portrait['burialdate'] = convert_date(burial.split('-')[0].split()[1:])
                     except:
                         pass
 
