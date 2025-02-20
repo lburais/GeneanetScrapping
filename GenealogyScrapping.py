@@ -97,6 +97,9 @@ def display( what=None, title=None, level=0, error=False, exception=False ):
             elif level > 1:
                 console.print( Panel( Text(what), style="cyan" ), NL)
 
+            elif title:
+                console.print( Panel( Text(what), title=title ))
+
             else:
                 console.print( Text(what) )
 
@@ -147,14 +150,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.service import Service
-
-#-------------------------------------------------------------------------
-#
-# Other Python Modules
-#
-#-------------------------------------------------------------------------
-
-import gedcom
 
 #-------------------------------------------------------------------------
 #
@@ -216,36 +211,50 @@ def convert_date(datetab):
 
     convert = {
         'à propos': 'ABT',
+        'estimé': 'EST',
         'après': 'AFT',
         'avant': 'BEF',
-        'entre': 'BET'
+        'entre': 'BET',
+        'et': 'AND'
     }
 
     if len(datetab) == 0:
         return(None)
 
     idx = 0
-    if datetab[0] == 'en':
+
+    # Assuming there is just a year and last element is the year
+
+    if len(datetab) == 1 or datetab[0] == 'en':
         # avoid a potential month
-        if datetab[1].isalpha():
-            return(datetab[2][0:4])
+        if datetab[-1].isalpha():
+            return(datetab[-1][0:4])
 
         # avoid a potential , after the year
-        elif datetab[1].isnumeric():
-            return(datetab[1][0:4])
+        elif datetab[-1].isnumeric():
+            return(datetab[-1][0:4])
 
-    if (datetab[0][0:2] == "à propos"[0:2] or datetab[0][0:2] ==  "après"[0:2] or datetab[0][0:2] ==  "avant"[0:2]) and (len(datetab) == 2):
-        return(convert[datetab[0]]+" "+datetab[1][0:4])
+    # Between date
 
-    # In case of french language with the 'entre' prefix
     if datetab[0] == 'entre':
-        pass
+        try:
+            index = datetab.index("et")
+            return(convert[datetab[0]]+" "+convert_date(datetab[1:index])+" "+convert[datetab[index]]+" "+convert_date(datetab[index+1:]))
+        except ValueError:
+            pass
 
-    # In case of french language remove the 'le' prefix
+    # Having prefix
+
+    if datetab[0] in list(convert.keys()):
+        return(convert[datetab[0]]+" "+convert_date(datetab[1:]))
+
+    # Skip 'le' prefix
+
     if datetab[0] == 'le':
         idx = 1
 
     # In case of french language remove the 'er' prefix
+
     if datetab[idx] == "1er":
         datetab[idx] = "1"
 
@@ -303,6 +312,27 @@ def event( obj, tag, date, place ):
 
 #-------------------------------------------------------------------------
 #
+# WikiTree class
+#
+#-------------------------------------------------------------------------
+
+class WikiTree:
+
+    # -------------------------------------------------------------------------
+    # __init__
+    # -------------------------------------------------------------------------
+    def __init__(self):
+        pass
+
+    # -------------------------------------------------------------------------
+    # scrap
+    # -------------------------------------------------------------------------
+
+    def scrap( self, person, url, force = False ):
+        pass
+
+#-------------------------------------------------------------------------
+#
 # Geneanet class
 #
 #-------------------------------------------------------------------------
@@ -318,11 +348,11 @@ class Geneanet:
     # -------------------------------------------------------------------------
     # _load
     # -------------------------------------------------------------------------
-    def _load( self, url, force = True ):
+    def _load( self, url, force = False ):
 
         try:
             output_folder = ICLOUD_PATH / re.sub( r'^/', '', urllib.parse.urlparse(url).path )
-            output_folder.parent.mkdir(parents=True, exist_ok=True)
+            output_folder.mkdir(parents=True, exist_ok=True)
 
             if len(urllib.parse.urlparse(url).query) == 0:
                 output_file = "repository"
@@ -437,7 +467,7 @@ class Geneanet:
     # _read
     # -------------------------------------------------------------------------
 
-    def _read( self, url, force = True ):
+    def _read( self, url, force = False ):
 
         perso = self._load( url, force )
 
@@ -491,8 +521,17 @@ class Geneanet:
         soup = BeautifulSoup(str, 'html.parser')
 
         try: # H2
-            title = '\n'.join(line for line in soup.find('h2').get_text().split('\n') if line.strip() != "").strip()
-            output = output + title + '\n' + "="*len(title) + '\n'*2
+            tag = '\n'.join(line for line in soup.find('h2').get_text().split('\n') if line.strip() != "").strip()
+            line = tag + '\n' + "="*len(tag) + '\n'*2
+            try: # H3
+                tag = '\n'.join(line for line in soup.find('h3').get_text().split('\n') if line.strip() != "").strip()
+                line = line + tag + '\n' + "-"*len(tag) + '\n'*2
+            except:
+                pass
+            # DIV
+            tag = '\n'.join(line for line in soup.find('div').get_text().split('\n') if line.strip() != "").strip()
+            if len(tag) > 0:
+                output = output + line + tag + '\n'*2
         except:
             pass
 
@@ -649,7 +688,7 @@ class Geneanet:
     # scrap
     # -------------------------------------------------------------------------
 
-    def scrap( self, person, url, force ):
+    def scrap( self, person, url, force = False ):
 
         try:
             # Reference
@@ -858,7 +897,7 @@ class Geneanet:
     # -------------------------------------------------------------------------
     # informations
     # -------------------------------------------------------------------------
-    def informations( self, url, force = True ):
+    def informations( self, url, force = False ):
 
         informations = {}
 
@@ -871,7 +910,7 @@ class Geneanet:
 
                 perso = self._load( informations['url'], force )
 
-                informations['author'] = perso.select( "div[class*='info-auteur']" )[0].find("strong").get_text()
+                informations['author'] = perso.select( "div[class*='info-auteur']" )[0].find("strong").get_text().strip()
                 informations['persons'] = int(re.sub(r'\D', '', perso.select( "span[class*='stats-number']" )[0].get_text()))
                 informations['lastchange'] = [ p for p in perso.select( "p[class*='text-light']" ) if 'Dernière' in p.get_text() ][0]
                 informations['lastchange'] = convert_date( informations['lastchange'].find("span").get_text().split( '/' ))
@@ -965,6 +1004,8 @@ class GFamily():
         }
         text = text + ''.join( [ event( self, tag, values[0], values[1] ) for tag, values in events.items() ])
 
+        text = text + "\n"
+
         return text
 
 #----------------------------------------------------------------------------------------------------------------------------------
@@ -980,7 +1021,7 @@ class GPerson():
     # -------------------------------------------------------------------------
     # url : genealogy url
 
-    def __init__(self, url, force):
+    def __init__(self, url, force = False):
 
         display( "" )
         display("Person: %s"%(url), level=2 )
@@ -1058,7 +1099,7 @@ class GPerson():
     # -------------------------------------------------------------------------
     @property
     def notes(self):
-        return self._notes
+        return self._notes if len(self._notes) > 0 else None
 
     # -------------------------------------------------------------------------
     # portrait
@@ -1151,6 +1192,8 @@ class GPerson():
         if hasattr(self, "_url"):
             text = text + "1 SOUR %s\n"%(self._url)
             
+        text = text + "\n"
+
         return text
 
 #----------------------------------------------------------------------------------------------------------------------------------
@@ -1179,7 +1222,7 @@ class GPersons():
     # add_person
     # -------------------------------------------------------------------------
 
-    def add_person( self, url, force, level = 0 ):
+    def add_person( self, url, force = False, level = 0 ):
 
         if not hasattr(self, '_parse'):
             self._parse = urllib.parse.urlparse(url)
@@ -1218,8 +1261,7 @@ class GPersons():
     # -------------------------------------------------------------------------
     # gedcom
     # -------------------------------------------------------------------------
-    @property
-    def gedcom( self ):
+    def gedcom( self, force = False ):
 
         display( "" )
         display( "GEDCOM", level=2 )
@@ -1238,23 +1280,43 @@ class GPersons():
 
         if len(self._persons) > 0:
             geneanet = Geneanet()
-            informations = geneanet.informations( next(iter(self._persons.values())).url )
+            informations = geneanet.informations( next(iter(self._persons.values())).url, force )
 
         # HEADER
 
         gedcom = "0 HEAD\n"
+        gedcom = gedcom + "1 SOUR GenealogyScrapping\n"
+        gedcom = gedcom + "2 VERS 1.0\n"
+        gedcom = gedcom + "2 NAME Genealogy Scrapping\n"
         gedcom = gedcom + "1 GEDC\n"
         gedcom = gedcom + "2 VERS 5.5\n"
         gedcom = gedcom + "2 FORM LINEAGE-LINKED\n"
         gedcom = gedcom + "1 CHAR UTF-8\n"
+        gedcom = gedcom + "1 SUBM @B00000@\n"
+        gedcom = gedcom + "\n"
+
+        # SUBM
+
+        gedcom = gedcom + "0 @B00000@ SUBM\n"
+        gedcom = gedcom + "1 NAME Laurent Burais\n"
+        gedcom = gedcom + "1 CHAN\n"
+        gedcom = gedcom + "2 DATE %s\n"%(convert_date([str(datetime.today().day), str(datetime.today().month), str(datetime.today().year)]))
+        gedcom = gedcom + "\n"
 
         # REPO
-        if hasattr(self, '_parse'):
-            gedcom = gedcom + "0 @R00000@ %s\n"%(self._user)
-            gedcom = gedcom + "1 NAME %s\n"%(self._user)
-            gedcom = gedcom + "1 TEXT %s\n"%(urllib.parse.urlunparse((self._parse.scheme, self._parse.netloc, self._parse.path, '', '', '')))
 
-        # INDI
+        if hasattr(self, '_parse') and 'informations' in locals():
+            gedcom = gedcom + "0 @R00000@ REPO\n"
+            if 'author' in informations:
+                gedcom = gedcom + "1 NAME %s\n"%(informations['author'])
+            if 'lastchange' in informations:
+                gedcom = gedcom + "1 CHAN\n"
+                gedcom = gedcom + "2 DATE %s\n"%(informations['lastchange'])
+            gedcom = gedcom + "1 WWW %s\n"%(urllib.parse.urlunparse((self._parse.scheme, self._parse.netloc, self._parse.path, '', '', '')))
+            gedcom = gedcom + "1 REPO_TYPE Geneanet\n"
+            gedcom = gedcom + "\n"
+
+        # INDI with SOUR and NOTE
 
         for ref, person in self._persons.items():
             gedcom = gedcom + person.gedcom
@@ -1266,7 +1328,7 @@ class GPersons():
 
         # TAILER
 
-        gedcom = gedcom + "0 TRLR\n"
+        gedcom = gedcom + "0 TRLR"
 
         return gedcom
 
@@ -1300,7 +1362,24 @@ def genealogyscrapping( person, ascendants=False, descendants=False, spouses=Fal
         persons.add_person( person, force )
 
         if gedcom_file:
-            gedcom_file.write_text( persons.gedcom)
+            gedcom_file.write_text( persons.gedcom( force ) )
+
+            try:
+                import pygedcom
+
+                parser = pygedcom.GedcomParser( str(gedcom_file) )
+                parser.parse()
+                check = parser.verify()
+
+                display("")
+                if check['status'] == 'ok':
+                    display(parser.get_stats(), title="Your %s file is valid"%(str(gedcom_file)))
+                else:
+                    display( check['message'], title="Your %s file is not valid"%(str(gedcom_file)))
+
+            except:
+                pass
+
     except:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         message = f'Something went wrong with scrapping [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
@@ -1332,12 +1411,10 @@ def main():
     parser.add_argument("-d", "--descendants", default=False, action='store_true', help="Includes descendants (off by default)")
     parser.add_argument("-s", "--spouses", default=False, action='store_true', help="Includes all spouses (off by default)")
     parser.add_argument("-l", "--level", default=0, type=int, help="Number of level to explore (0 by default)")
-    parser.add_argument("-g", "--gedcom", type=str, help="Full path of the GEDCOM file to output")
     parser.add_argument("-f", "--force", default=False, action='store_true', help="Force preloading web page (off by default)")
     parser.add_argument("searchedperson", type=str, nargs='?', help="Url of the person to search in Geneanet")
     args = parser.parse_args()
 
-    gedcom = args.gedcom
     force = args.force
     ascendants = args.ascendants
     descendants = args.descendants
@@ -1362,6 +1439,7 @@ def main():
             'https://gw.geneanet.org/comrade28?iz=0&p=nicholas&n=de+bacqueville',       # comrade28 - Nicholas de Bacqueville
             'https://gw.geneanet.org/12marcel?p=marie+rose&n=cler',                     # 12marcel - Marie Rose Cler
             'https://gw.geneanet.org/pierreb0142?p=desire+antonin&n=bessey',            # pierre0142 - Désiré Antonin Bessey
+            'https://gw.geneanet.org/lburais_w?p=milo&n=x&oc=1125',                       # lburais - Milo
             # 'https://gw.geneanet.org/alandur',                                        # alandur
             # 'https://gw.geneanet.org/domale',                                         # domale
             # 'https://gw.geneanet.org/malugi',                                         # malugi
@@ -1371,7 +1449,6 @@ def main():
         searchedpersons = [ args.searchedperson ]
 
     params = {
-        'gedcom' : gedcom,
         'force' : force,
         'ascendants' : ascendants,
         'descendants' : descendants,
@@ -1393,10 +1470,9 @@ def main():
 
         # Scrap geneanet
 
-        if not gedcom:
-            gedcom = ICLOUD_PATH / "gedcom" / f"{userid}.ged"
-            gedcom.parent.mkdir(parents=True, exist_ok=True)
-            gedcom.unlink(missing_ok=True)
+        gedcom = ICLOUD_PATH / "gedcom" / f"{userid}.ged"
+        gedcom.parent.mkdir(parents=True, exist_ok=True)
+        gedcom.unlink(missing_ok=True)
 
         persons = genealogyscrapping( searchedperson, ascendants, descendants, spouses, max_levels, force, gedcom )
 

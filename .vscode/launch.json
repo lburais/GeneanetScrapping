@@ -13,7 +13,7 @@
             "request": "launch",
             "program": "GenealogyScrapping.py",
             "console": "integratedTerminal",
-            "args": "-l 5"
+            "args": "-l 5 -a -s"
         },
         {
             "name": "Single",
@@ -21,7 +21,7 @@
             "request": "launch",
             "program": "GenealogyScrapping.py",
             "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/pierreb0142?lang=fr&p=marie&n=simon&oc=6' -l 0"
+            "args": "'https://gw.geneanet.org/lburais_w?p=milo&n=x&oc=1125' -l 0"
         },
         {
             "name": "3 gen",
