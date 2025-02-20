@@ -164,6 +164,7 @@ def convert_date(datetab):
 
     convert = {
         'ca': 'ABT',
+        'vers': 'ABT',
         'à propos': 'ABT',
         'estimé': 'EST',
         'après': 'AFT',
