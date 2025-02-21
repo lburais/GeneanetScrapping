@@ -13,24 +13,39 @@
 # GNU General Public License for more details.
 #
 
-from common import *
-from geneanet import Geneanet
+"""
+Package to manage Individuals and Families
+"""
 
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 #
-# Used Python Modules
+# Standard Python Modules
 #
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 
 import re
+from datetime import datetime
+import urllib
 
-#----------------------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------
+#
+# Internal Python Modules
+#
+# -------------------------------------------------------------------------
+
+from common import display, event, clean_query, convert_date
+from geneanet import Geneanet
+
+# --------------------------------------------------------------------------------------------------
 #
 # GFamily class
 #
-#----------------------------------------------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------
 
 class GFamily():
+    """
+    Class of one family
+    """
 
     # -------------------------------------------------------------------------
     # __init__
@@ -38,13 +53,26 @@ class GFamily():
 
     def __init__(self, family ):
 
+        self._gedcomid = None
+
+        self._spousesref = []
+        self._spousesid = []
+
+        self._childsref = []
+        self._childsid = []
+
         for key, value in family.items():
             setattr(self, "_"+key, value)
 
     # -------------------------------------------------------------------------
     # setids
     # -------------------------------------------------------------------------
-    def setids(self, persons_table, families_table):
+
+    def setids( self, individuals_table, families_table ):
+        """
+        Function to set GEDCOM ids
+        """
+
         try:
             self._gedcomid = families_table[tuple(self._spousesref)]
         except:
@@ -56,23 +84,25 @@ class GFamily():
         self._spousesid = []
         for spouse in self._spousesref:
             try:
-                self._spousesid = self._spousesid + [ persons_table[spouse] ]
+                self._spousesid = self._spousesid + [ individuals_table[spouse] ]
             except:
                 self._spousesid = self._spousesid + [ None ]
 
-        if hasattr(self, '_childsref'):
-            self._childsid = []
-            for child in self._childsref:
-                try:
-                    self._childsid = self._childsid + [ persons_table[child] ]
-                except:
-                    self._childsid = self._childsid + [ None ]
+        self._childsid = []
+        for child in self._childsref:
+            try:
+                self._childsid = self._childsid + [ individuals_table[child] ]
+            except:
+                self._childsid = self._childsid + [ None ]
 
     # -------------------------------------------------------------------------
     # spousesref
     # -------------------------------------------------------------------------
     @property
     def spousesref(self):
+        """
+        Property to get the tuple of the spouses' reference of the family
+        """
         return tuple( self._spousesref )
 
     # -------------------------------------------------------------------------
@@ -80,6 +110,9 @@ class GFamily():
     # -------------------------------------------------------------------------
     @property
     def childsref(self):
+        """
+        Property to get the list of childs' reference of the family
+        """
         return self._childsref
 
     # -------------------------------------------------------------------------
@@ -87,23 +120,26 @@ class GFamily():
     # -------------------------------------------------------------------------
     @property
     def gedcom(self):
+        """
+        Property to get the GEDCOM of the family
+        """
 
         text = ""
         if hasattr(self, "_gedcomid"):
-            text = text + "0 @%s@ FAM\n"%(self._gedcomid)
+            text = text + f"0 @{self._gedcomid}@ FAM\n"
 
         if hasattr(self, "_spousesid"):
             if self._spousesid[0]:
-                text = text + "1 HUSB @%s@\n"%(self._spousesid[0])
-            
+                text = text + f"1 HUSB @{self._spousesid[0]}@\n"
+
             if self._spousesid[1]:
-                text = text + "1 WIFE @%s@\n"%(self._spousesid[1])
+                text = text + f"1 WIFE @{self._spousesid[1]}@\n"
 
         if hasattr(self, "_childsid"):
             for childid in self._childsid:
                 if childid:
-                    text = text + "1 CHIL @%s@\n"%(childid)
-        
+                    text = text + f"1 CHIL @{childid}@\n"
+
         events = {
             'MARR': ( 'marriagedate', 'marriageplace'),
             'DIV': ( 'divorcedate', 'divorceplace')
@@ -114,68 +150,92 @@ class GFamily():
 
         return text
 
-#----------------------------------------------------------------------------------------------------------------------------------
-#
-# GPerson class
-#
-#----------------------------------------------------------------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # print
+    # -------------------------------------------------------------------------
 
-class GPerson():
+    def print( self ):
+        """
+        Function to print the family
+        """
+
+        display( vars(self), title=f"Family [{self._gedcomid}]: {self._spousesref}" )
+
+# --------------------------------------------------------------------------------------------------
+#
+# GIndividual class
+#
+# --------------------------------------------------------------------------------------------------
+
+class GIndividual():
+    """
+    Class of one individual
+    """
 
     # -------------------------------------------------------------------------
     # __init__
     # -------------------------------------------------------------------------
-    # url : genealogy url
 
     def __init__(self, url, force = False):
 
         display( "" )
-        display("Person: %s"%(url), level=2 )
+        display( f"Individual: {url}", level=2 )
 
         self._url = url
+        self._ref = None
+
+        self._gedcomid = None
 
         self._portrait = {}
 
         self._parentsref = []
+        self._parentsid = []
+        self._familyid = None
+
 
         self._siblingsref = []
+        self._siblingsid = []
 
         self._families = []
+        self._familiesid = []
 
         if 'geneanet' in url:
             # scrap geneanet page
             geneanet = Geneanet()
-            person = geneanet.scrap( url, force )
+            individual = geneanet.scrap( url, force )
 
-            if 'portrait' in person:
-                self._portrait = person['portrait']
+            if 'portrait' in individual:
+                self._portrait = individual['portrait']
 
-            if 'parentsref' in person:
-                self._parentsref = person['parentsref']
+            if 'parentsref' in individual:
+                self._parentsref = individual['parentsref']
 
-            if 'siblingsref' in person:
-                self._siblingsref = person['siblingsref']
+            if 'siblingsref' in individual:
+                self._siblingsref = individual['siblingsref']
 
-            if 'families' in person:
-                self._families = [ GFamily( family ) for family in person['families'] ]
+            if 'families' in individual:
+                self._families = [ GFamily( family ) for family in individual['families'] ]
 
         else:
-            display( "Add processing for %"%(url), error=True )
+            display( f"Add processing for {url}", error=True )
 
     # -------------------------------------------------------------------------
     # setids
     # -------------------------------------------------------------------------
-    def setids(self, persons_table, families_table):
+    def setids(self, individuals_table, families_table):
+        """
+        Function to set GEDCOM ids
+        """
 
         try:
-            self._gedcomid = persons_table[self._ref]
+            self._gedcomid = individuals_table[self._ref]
         except:
             pass
 
         self._parentsid = []
         for parent in self._parentsref:
             try:
-                self._parentsid = self._parentsid + [ persons_table[parent] ]
+                self._parentsid = self._parentsid + [ individuals_table[parent] ]
             except:
                 self._parentsid = self._parentsid + [ None ]
 
@@ -190,17 +250,17 @@ class GPerson():
         self._siblingsid = []
         for sibling in self._siblingsref:
             try:
-                self._siblingsid = self._siblingsid + [ persons_table[sibling] ]
+                self._siblingsid = self._siblingsid + [ individuals_table[sibling] ]
             except:
                 self._siblingsid = self._siblingsid + [ None ]
 
         self._familiesid = []
         for family in self._families:
             try:
-                self._familiesid = self._familiesid + [ families_table[tuple(family._spousesref)] ]
+                self._familiesid = self._familiesid + [ families_table[tuple(family.spousesref)] ]
             except:
                 try:
-                    self._familiesid = self._familiesid + [ families_table[tuple(family._spousesref)[::-1]] ]
+                    self._familiesid = self._familiesid + [ families_table[tuple(family.spousesref)[::-1]] ]
                 except:
                     self._familiesid = self._familiesid + [ None ]
 
@@ -209,6 +269,9 @@ class GPerson():
     # -------------------------------------------------------------------------
     @property
     def url(self):
+        """
+        Property to get the url of the individual
+        """
         return self._url
 
     # -------------------------------------------------------------------------
@@ -216,13 +279,19 @@ class GPerson():
     # -------------------------------------------------------------------------
     @property
     def notes(self):
-        return self._notes if len(self._notes) > 0 else None
+        """
+        Property to get the list of notes of the individual
+        """
+        return self._portrait['notes'] if 'notes' in self._portrait else None
 
     # -------------------------------------------------------------------------
     # portrait
     # -------------------------------------------------------------------------
     @property
     def portrait(self):
+        """
+        Property to get the data of the individual
+        """
         return self._portrait
 
     # -------------------------------------------------------------------------
@@ -230,6 +299,9 @@ class GPerson():
     # -------------------------------------------------------------------------
     @property
     def parentsref(self):
+        """
+        Property to get the list of parents' reference of the individual
+        """
         return self._parentsref
 
     # -------------------------------------------------------------------------
@@ -237,20 +309,29 @@ class GPerson():
     # -------------------------------------------------------------------------
     @property
     def spousesref(self):
-        return [item for sublist in [ family.spousesref for family in self._families ] for item in sublist]
+        """
+        Property to get the list of spouses' reference of the individual
+        """
+        return [ item for sublist in [ family.spousesref for family in self._families ] for item in sublist ]
 
     # -------------------------------------------------------------------------
     # childsref
     # -------------------------------------------------------------------------
     @property
     def childsref(self):
-        return [item for sublist in [ family.childsref for family in self._families ] for item in sublist]
+        """
+        Property to get the list of childs' reference of the individual
+        """
+        return [ item for sublist in [ family.childsref for family in self._families ] for item in sublist ]
 
     # -------------------------------------------------------------------------
     # siblingsref
     # -------------------------------------------------------------------------
     @property
     def siblingsref(self):
+        """
+        Property to get the list of siblings' reference of the individual
+        """
         return self._siblingsref
 
     # -------------------------------------------------------------------------
@@ -258,6 +339,9 @@ class GPerson():
     # -------------------------------------------------------------------------
     @property
     def families(self):
+        """
+        Property to get the list of families of the individual
+        """
         return self._families
 
     # -------------------------------------------------------------------------
@@ -265,24 +349,27 @@ class GPerson():
     # -------------------------------------------------------------------------
     @property
     def gedcom(self):
+        """
+        Property to get the GEDCOM of the individual
+        """
 
         text = ""
         if hasattr(self, "_gedcomid"):
-            text = text + "0 @%s@ INDI\n"%(self._gedcomid)
-        
+            text = text + f"0 @{self._gedcomid}@ INDI\n"
+
         names = { 'name': "", "first": "", "last": ""}
         if 'firstname' in self._portrait:
             names['name'] = self._portrait['firstname']
-            names["first"] = "2 GIVN %s\n"%(self._portrait['firstname'])
+            names["first"] = f"2 GIVN {self._portrait['firstname']}\n"
         if 'lastname' in self._portrait:
-            names['name'] = names['name'] + " /%s/"%(self._portrait['lastname'])
-            names["last"] = "2 SURN %s\n"%(self._portrait['lastname'])
+            names['name'] = names['name'] + f" /{self._portrait['lastname']}/"
+            names["last"] = f"2 SURN {self._portrait['lastname']}\n"
         if len(names['name']) > 0:
-            names['name'] = "1 NAME %s\n"%(names['name'].strip())
+            names['name'] = f"1 NAME {names['name'].strip()}\n"
         text = text + ''.join([name for key, name in names.items() if len(name) >0])
 
         if 'sex' in self._portrait:
-            text = text + "1 SEX %s\n"%(self._portrait['sex'])
+            text = text + f"1 SEX {self._portrait['sex']}\n"
 
         events = {
             'BIRT': ( 'birthdate', 'birthplace'),
@@ -293,33 +380,51 @@ class GPerson():
 
         for family in self._familiesid:
             if family:
-                text = text + "1 FAMS @%s@\n"%(family)
+                text = text + f"1 FAMS @{family}@\n"
 
         if hasattr(self, "_familyid"):
-            text = text + "1 FAMC @%s@\n"%(self._familyid)
-        
+            text = text + f"1 FAMC @{self._familyid}@\n"
+
         if hasattr(self, "_notes"):
             notes = self._notes.splitlines()
             if len(notes) > 0:
-                text = text + "1 NOTE %s\n"%(notes[0])
+                text = text + f"1 NOTE {notes[0]}\n"
                 notes.pop(0)
                 for note in notes:
-                    text = text + "2 CONT %s\n"%(note)
-            
+                    text = text + f"2 CONT {note}\n"
+
         if hasattr(self, "_url"):
-            text = text + "1 SOUR %s\n"%(self._url)
-            
+            text = text + f"1 SOUR {self._url}\n"
+
         text = text + "\n"
 
         return text
 
-#----------------------------------------------------------------------------------------------------------------------------------
-#
-# GPersons class
-#
-#----------------------------------------------------------------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # print
+    # -------------------------------------------------------------------------
 
-class GPersons():
+    def print( self ):
+        """
+        Function to print the individual
+        """
+
+        p = vars(self).copy()
+        # del p['_notes']
+        display( p, title=f"Individual [{self._gedcomid}]: {self._ref}" )
+        # if individual.notes != "":
+        #    display( individual.notes, title="" )
+
+# --------------------------------------------------------------------------------------------------
+#
+# Genealogy class
+#
+# --------------------------------------------------------------------------------------------------
+
+class Genealogy():
+    """
+    Class for the complete genealogy
+    """
 
     # -------------------------------------------------------------------------
     # __init__
@@ -327,7 +432,10 @@ class GPersons():
 
     def __init__(self, max_level, ascendants, spouses, descendants ):
 
-        self._persons = {}
+        self._parse = None
+        self._user = None
+
+        self._individuals = {}
         self._max_level = max_level
         self._ascendants = ascendants
         self._spouses = spouses
@@ -336,25 +444,28 @@ class GPersons():
         self._families = {}
 
     # -------------------------------------------------------------------------
-    # add_person
+    # add_individual
     # -------------------------------------------------------------------------
 
-    def add_person( self, url, force = False, level = 0 ):
+    def add_individual( self, url, force = False, level = 0 ):
+        """
+        Function to add one individual to the genealogy
+        """
 
-        if not hasattr(self, '_parse'):
+        if not self._parse:
             self._parse = urllib.parse.urlparse(url)
 
-        if not hasattr(self, '_user'):
+        if not self._user:
             self._user = re.sub( r'^/', '', self._parse.path )
 
         if urllib.parse.urlparse(url).scheme == "":
             url = urllib.parse.urlunparse((self._parse.scheme, self._parse.netloc, self._parse.path, '', url, ''))
 
         ref = clean_query( url )
-        if ref not in self._persons:
-            self._persons[ref] = GPerson( url, force )
+        if ref not in self._individuals:
+            self._individuals[ref] = GIndividual( url, force )
             try:
-                new_families = self._persons[ref].families
+                new_families = self._individuals[ref].families
                 for family in new_families:
                     if tuple(family.spousesref) not in self._families and tuple(family.spousesref)[::-1] not in self._families:
                         self._families[ tuple(family.spousesref) ] = family
@@ -364,40 +475,43 @@ class GPersons():
             if level < self._max_level:
 
                 if self._ascendants:
-                    for parent in self._persons[ref].parentsref:
-                        self.add_person( parent, force, level+1 )
+                    for parent in self._individuals[ref].parentsref:
+                        self.add_individual( parent, force, level+1 )
 
                 if self._spouses:
-                    for spouse in self._persons[ref].spousesref:
-                        self.add_person( spouse, force, level+1 )
+                    for spouse in self._individuals[ref].spousesref:
+                        self.add_individual( spouse, force, level+1 )
 
                 if self._descendants:
-                    for child in self._persons[ref].childsref:
-                        self.add_person( child, force, level+1 )
+                    for child in self._individuals[ref].childsref:
+                        self.add_individual( child, force, level+1 )
 
     # -------------------------------------------------------------------------
     # gedcom
     # -------------------------------------------------------------------------
     def gedcom( self, force = False ):
+        """
+        Function to get the GEDCOM of the genealogy
+        """
 
         display( "" )
         display( "GEDCOM", level=2 )
 
         # set gedcom id
-        persons_table = {key: "I%05d"%(index+1) for index, key in enumerate(self._persons)}
-        families_table = {key: "F%05d"%(index+1) for index, key in enumerate(self._families)}
+        individuals_table = {key: f"I{index+1:05d}" for index, key in enumerate(self._individuals)}
+        families_table = {key: f"F{index+1:05d}" for index, key in enumerate(self._families)}
 
-        for ref, person in self._persons.items():
-            person.setids( persons_table, families_table )
+        for individual in self._individuals.values():
+            individual.setids( individuals_table, families_table )
 
-        for ref, family in self._families.items():
-            family.setids( persons_table, families_table )
+        for family in self._families.values():
+            family.setids( individuals_table, families_table )
 
         # Author
 
-        if len(self._persons) > 0:
+        if len(self._individuals) > 0:
             geneanet = Geneanet()
-            informations = geneanet.informations( next(iter(self._persons.values())).url, force )
+            informations = geneanet.informations( next(iter(self._individuals.values())).url, force )
 
         # HEADER
 
@@ -417,7 +531,7 @@ class GPersons():
         gedcom = gedcom + "0 @B00000@ SUBM\n"
         gedcom = gedcom + "1 NAME Laurent Burais\n"
         gedcom = gedcom + "1 CHAN\n"
-        gedcom = gedcom + "2 DATE %s\n"%(convert_date([str(datetime.today().day), str(datetime.today().month), str(datetime.today().year)]))
+        gedcom = gedcom + f"2 DATE {(convert_date([str(datetime.today().day), str(datetime.today().month), str(datetime.today().year)]))}\n"
         gedcom = gedcom + "\n"
 
         # REPO
@@ -425,22 +539,22 @@ class GPersons():
         if hasattr(self, '_parse') and 'informations' in locals():
             gedcom = gedcom + "0 @R00000@ REPO\n"
             if 'author' in informations:
-                gedcom = gedcom + "1 NAME %s\n"%(informations['author'])
+                gedcom = gedcom + f"1 NAME {informations['author']}\n"
             if 'lastchange' in informations:
                 gedcom = gedcom + "1 CHAN\n"
-                gedcom = gedcom + "2 DATE %s\n"%(informations['lastchange'])
-            gedcom = gedcom + "1 WWW %s\n"%(urllib.parse.urlunparse((self._parse.scheme, self._parse.netloc, self._parse.path, '', '', '')))
+                gedcom = gedcom + f"2 DATE {informations['lastchange']}\n"
+            gedcom = gedcom + f"1 WWW {urllib.parse.urlunparse((self._parse.scheme, self._parse.netloc, self._parse.path, '', '', ''))}\n"
             gedcom = gedcom + "1 REPO_TYPE Geneanet\n"
             gedcom = gedcom + "\n"
 
         # INDI with SOUR and NOTE
 
-        for ref, person in self._persons.items():
-            gedcom = gedcom + person.gedcom
+        for individual in self._individuals.values():
+            gedcom = gedcom + individual.gedcom
 
         # FAM
 
-        for ref, family in self._families.items():
+        for family in self._families.values():
             gedcom = gedcom + family.gedcom
 
         # TAILER
@@ -454,17 +568,16 @@ class GPersons():
     # -------------------------------------------------------------------------
 
     def print( self ):
-        display( self._persons, title="%d Persons"%(len(self._persons)) )
+        """
+        Function to print the genealogy
+        """
 
-        display( self._families, title="%d Families"%(len(self._families)) )
+        display( self._individuals, title=f"{len(self._individuals)} Individuals" )
 
-        for key, person in self._persons.items():
-            p = vars(person).copy()
-            # del p['_notes']
-            display( p, title="Person: %s"%(key) )
-            # if person.notes != "":
-            #    display( person.notes, title="" )
+        display( self._families, title=f"{len(self._families)} Families" )
 
-        for key, family in self._families.items():
-            display( vars(family), title="Family: %s"%(str(key)) )
+        for individual in self._individuals.values():
+            individual.print()
 
+        for family in self._families.values():
+            family.print()

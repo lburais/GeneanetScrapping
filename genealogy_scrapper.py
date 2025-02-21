@@ -13,95 +13,89 @@
 # GNU General Public License for more details.
 #
 
-from common import *
-# from geneanet import Geneanet
-from genealogy import GFamily, GPerson, GPersons
+"""
+Genealogy Scrapping
+"""
 
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 #
-# Used Python Modules
+# Standard Python Modules
 #
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 
 import os
-import time
-import io
 import sys
 import re
-import uuid
-import random
 import argparse
-import json
-from datetime import datetime
-from pathlib import Path
 import subprocess
-import base64
+import urllib
 
+import pygedcom
 
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 #
-# Global variables
+# Internal Python Modules
 #
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 
-ICLOUD_PATH = "."
+from common import display, console_clear, console_flush, console_text, get_folder
+from genealogy import Genealogy
 
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 #
-# Web Scrapping
+# genealogy_scrapping
 #
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 
-
-###################################################################################################################################
-# genealogyscrapping
-###################################################################################################################################
-
-def genealogyscrapping( person, ascendants=False, descendants=False, spouses=False, max_levels= 0, force=False, gedcom_file=None):
+def genealogy_scrapping( individual, ascendants=False, descendants=False, spouses=False, max_levels= 0, force=False, gedcom_file=None):
+    """
+    Main function to start processing of genealogy
+    """
 
     try:
-        persons = GPersons( max_levels, ascendants, spouses, descendants )
-        persons.add_person( person, force )
+        genealogy = Genealogy( max_levels, ascendants, spouses, descendants )
+        genealogy.add_individual( individual, force )
 
         if gedcom_file:
-            gedcom_file.write_text( persons.gedcom( force ) )
+            gedcom_file.write_text( genealogy.gedcom( force ) )
 
-            try:
-                import pygedcom
+        try:
+            parser = pygedcom.GedcomParser( str(gedcom_file) )
+            parser.parse()
+            check = parser.verify()
 
-                parser = pygedcom.GedcomParser( str(gedcom_file) )
-                parser.parse()
-                check = parser.verify()
+            display("")
+            if check['status'] == 'ok':
+                display( parser.get_stats(), title=f"Your {str(gedcom_file)} file is valid" )
+            else:
+                display( check['message'], title=f"Your {str(gedcom_file)} file is not valid" )
 
-                display("")
-                if check['status'] == 'ok':
-                    display(parser.get_stats(), title="Your %s file is valid"%(str(gedcom_file)))
-                else:
-                    display( check['message'], title="Your %s file is not valid"%(str(gedcom_file)))
-
-            except:
-                pass
+        except:
+            pass
 
     except:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         message = f'Something went wrong with scrapping [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
         display( message, error=True )
 
-    return persons
+    return genealogy
 
 ###################################################################################################################################
 # main
 ###################################################################################################################################
 
 def main():
+    """
+    Main function to go by command line arguments and default setup
+    """
 
     console_clear()
 
-    display( "GenealogyScrapping", level=1 )
+    display( "Genealogy Scrapper", level=1 )
 
     # Create data folder
 
-    ICLOUD_PATH = get_folder()
+    root_folder = get_folder()
 
     # Process parameters
 
@@ -111,7 +105,7 @@ def main():
     parser.add_argument("-s", "--spouses", default=False, action='store_true', help="Includes all spouses (off by default)")
     parser.add_argument("-l", "--level", default=0, type=int, help="Number of level to explore (0 by default)")
     parser.add_argument("-f", "--force", default=False, action='store_true', help="Force preloading web page (off by default)")
-    parser.add_argument("searchedperson", type=str, nargs='?', help="Url of the person to search in Geneanet")
+    parser.add_argument("searchedindividual", type=str, nargs='?', help="Url of the individual to search in Geneanet")
     args = parser.parse_args()
 
     force = args.force
@@ -120,12 +114,12 @@ def main():
     spouses = args.spouses
     max_levels = args.level
 
-    if max_levels == None:
+    if max_levels is None:
         max_levels = 0
 
-    if args.searchedperson == None:
+    if args.searchedindividual is None:
 
-        searchedpersons = [
+        searchedgenealogy = [
             'https://gw.geneanet.org/lipari?p=leon+desire+louis&n=bessey',              # lipari - Léon Désiré Louis Bessey
             'https://gw.geneanet.org/asempey?n=jantieu&p=margueritte&oc=0',             # asempey - Marguerite Jantieu
             'https://gw.geneanet.org/iraird?p=nicholas&n=le+teuton',                    # iraird - Nicholas le Teuton
@@ -145,7 +139,7 @@ def main():
         ]
 
     else:
-        searchedpersons = [ args.searchedperson ]
+        searchedgenealogy = [ args.searchedindividual ]
 
     params = {
         'force' : force,
@@ -153,15 +147,15 @@ def main():
         'descendants' : descendants,
         'spouses' : spouses,
         'max_levels' : max_levels,
-        'searchedpersons' : searchedpersons
+        'searchedgenealogy' : searchedgenealogy
     }
     display( params, title="Paramùeters")
 
-    # Process searched persons
+    # Process searched genealogy
 
-    for searchedperson in searchedpersons:
+    for searchedindividual in searchedgenealogy:
 
-        userid = re.sub( r'^/', '', urllib.parse.urlparse(searchedperson).path )
+        userid = re.sub( r'^/', '', urllib.parse.urlparse(searchedindividual).path )
 
         # disable screenlock
 
@@ -169,11 +163,11 @@ def main():
 
         # Scrap geneanet
 
-        gedcom = ICLOUD_PATH / "gedcom" / f"{userid}.ged"
+        gedcom = root_folder / "gedcom" / f"{userid}.ged"
         gedcom.parent.mkdir(parents=True, exist_ok=True)
         gedcom.unlink(missing_ok=True)
 
-        persons = genealogyscrapping( searchedperson, ascendants, descendants, spouses, max_levels, force, gedcom )
+        genealogy = genealogy_scrapping( searchedindividual, ascendants, descendants, spouses, max_levels, force, gedcom )
 
         # enable screenlock
 
@@ -183,23 +177,22 @@ def main():
 
         display( "" )
 
-        #output_file = ICLOUD_PATH / "output" / f"{userid}_logs_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
-        output_file = ICLOUD_PATH / "output" / f"{userid}_logs.txt"
+        #output_file = root_folder / "output" / f"{userid}_logs_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
+        output_file = root_folder / "output" / f"{userid}_logs.txt"
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.unlink(missing_ok=True)
-        output_file.write_text(console.export_text())  # Saves formatted text output
+        output_file.write_text(console_text())  # Saves formatted text output
 
         # Save outcome
-        
+
         console_flush()
 
-        persons.print()
+        genealogy.print()
 
-        output_file = ICLOUD_PATH / "output" / f"{userid}_console.txt"
+        output_file = root_folder / "output" / f"{userid}_console.txt"
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.unlink(missing_ok=True)
         output_file.write_text(console_text())
 
 if __name__ == '__main__':
     main()
-

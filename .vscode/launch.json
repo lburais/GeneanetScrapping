@@ -11,7 +11,7 @@
             "name": "List",
             "type": "debugpy",
             "request": "launch",
-            "program": "GenealogyScrapping.py",
+            "program": "genealogy_scrapper.py",
             "console": "integratedTerminal",
             "args": "-l 5 -a -s"
         },
@@ -19,15 +19,15 @@
             "name": "Single",
             "type": "debugpy",
             "request": "launch",
-            "program": "GenealogyScrapping.py",
+            "program": "genealogy_scrapper.py",
             "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/lipari?pz=alexia&nz=henry&p=leon+desire+louis&n=bessey' -l 0"
+            "args": "'https://gw.geneanet.org/comrade28?iz=0&p=nicholas&n=de+bacqueville' -l 0"
         },
         {
             "name": "3 gen",
             "type": "debugpy",
             "request": "launch",
-            "program": "GenealogyScrapping.py",
+            "program": "genealogy_scrapper.py",
             "console": "integratedTerminal",
             "args": "'https://gw.geneanet.org/comrade28?iz=0&p=nicholas&n=de+bacqueville' -l 2 -a -s"
         },
@@ -35,7 +35,7 @@
             "name": "Léon",
             "type": "debugpy",
             "request": "launch",
-            "program": "GenealogyScrapping.py",
+            "program": "genealogy_scrapper.py",
             "console": "integratedTerminal",
             "args": "'https://gw.geneanet.org/lipari?pz=alexia&nz=henry&p=leon+desire+louis&n=bessey' -l 50 -a -s -d"
         }

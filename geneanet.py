@@ -13,27 +13,31 @@
 # GNU General Public License for more details.
 #
 
-from common import *
+"""
+Package to process Geneanet pages
+"""
 
 #-------------------------------------------------------------------------
 #
-# Used Python Modules
+# Standard Python Modules
 #
 #-------------------------------------------------------------------------
 
 import re
 from collections import namedtuple
+import base64
+import sys
+import os
+import urllib
 
-# https://
+# https://pypi.org/project/beautifulsoup4/
 # pip3 install bs4
 
-from bs4 import BeautifulSoup
-from bs4 import Comment, NavigableString
+from bs4 import BeautifulSoup, Comment
 
-# https://
+# https://pypi.org/project/selenium/
 # pip3 install selenium
 
-import selenium
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -43,18 +47,28 @@ from selenium.webdriver.chrome.service import Service
 
 #-------------------------------------------------------------------------
 #
+# Internal Python Modules
+#
+#-------------------------------------------------------------------------
+
+from common import display, get_folder, convert_date, clean_query
+
+#-------------------------------------------------------------------------
+#
 # Geneanet class
 #
 #-------------------------------------------------------------------------
 
 class Geneanet:
+    """
+    Class to process Geneanet content
+    """
 
     # -------------------------------------------------------------------------
     # __init__
     # -------------------------------------------------------------------------
     def __init__(self):
         self._folder = get_folder()
-        pass
 
     # -------------------------------------------------------------------------
     # _load
@@ -85,9 +99,9 @@ class Geneanet:
 
             browser = None
 
-            if force == True or not output_txt.exists():
+            if force is True or not output_txt.exists():
 
-                display( 'Load from %s'%(url))
+                display( f'Load from {url}' )
 
                 # Chrome setup
 
@@ -98,7 +112,7 @@ class Geneanet:
 
                 # Configure Chrome print settings to save as PDF
                 output_pdf = output_folder / (output_file + ".pdf")
-                output_pdf.unlink(missing_ok=True)   
+                output_pdf.unlink(missing_ok=True)
 
                 chrome_options.add_experimental_option("prefs", {
                     "printing.print_preview_sticky_settings.appState": '{"recentDestinations":[{"id":"Save as PDF","origin":"local"}],"selectedDestinationId":"Save as PDF","version":2}',
@@ -117,8 +131,8 @@ class Geneanet:
                         EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
                     )
                     ActionChains(browser).move_to_element(consent_button).click().perform()
-                except:
-                    pass
+                except Exception as e:
+                    display( f"Clickable: {type(e).__name__}", error=True )
 
                 # Get content in perso bloc
 
@@ -143,30 +157,28 @@ class Geneanet:
 
                     # Save PDF to file
                     output_pdf.write_bytes(base64.b64decode(pdf_data["data"]))
-                except:
-                    display( 'Failed to save PDF: %s'%(output_pdf), error=True )
+                except Exception as e:
+                    display( f"Save PDF: {type(e).__name__}", error=True )
+                    display( f'Failed to save PDF: {output_pdf}', error=True )
 
                 # process perso
 
                 try:
-                    output_txt.unlink(missing_ok=True)   
-
-                    NL = "\n"
-                    NC = 132
-
+                    output_txt.unlink(missing_ok=True)
                     output_txt.write_text( perso.prettify() )
-                except:
-                    display( 'Failed to save HTML: %s'%(output_txt), error=True )
-
+                except Exception as e:
+                    display( f"Save HTML: {type(e).__name__}", error=True )
+                    display( f'Failed to save HTML: {output_txt}', error=True )
 
             else:
-                display( 'Read from %s'%(output_txt))
+                display( f'Read from {output_txt}' )
                 perso = BeautifulSoup( output_txt.read_text(), 'html.parser' )
 
         except:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             message = f'Exception [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
             display( message, error=True )
+            display( message, exception=True )
             perso = None
 
         if browser:
@@ -226,10 +238,10 @@ class Geneanet:
     # -------------------------------------------------------------------------
     # _scrap_notes
     # -------------------------------------------------------------------------
-    def _scrap_notes( self, person, str ):
+    def _scrap_notes( self, person, html ):
 
         output = ''
-        soup = BeautifulSoup(str, 'html.parser')
+        soup = BeautifulSoup(html, 'html.parser')
 
         try: # H2
             tag = '\n'.join(line for line in soup.find('h2').get_text().split('\n') if line.strip() != "").strip()
@@ -237,21 +249,27 @@ class Geneanet:
             try: # H3
                 tag = '\n'.join(line for line in soup.find('h3').get_text().split('\n') if line.strip() != "").strip()
                 line = line + tag + '\n' + "-"*len(tag) + '\n'*2
-            except:
+            except AttributeError:
                 pass
+            except Exception as e:
+                display( f"Notes h3: {type(e).__name__}", error=True )
             # DIV
             tag = '\n'.join(line for line in soup.find('div').get_text().split('\n') if line.strip() != "").strip()
             if len(tag) > 0:
                 output = output + line + tag + '\n'*2
-        except:
+        except AttributeError:
             pass
+        except Exception as e:
+            display( f"Notes h2: {type(e).__name__}", error=True )
 
         try: # LI - RELATED
             lines = soup.find_all('li')
             for line in lines:
                 output = output + '- ' + ' '.join(line for line in line.get_text().replace('\n',' ').split(' ') if line.strip() != "").strip() + '\n'
-        except:
+        except AttributeError:
             pass
+        except Exception as e:
+            display( f"Notes li: {type(e).__name__}", error=True )
 
         try: # TABLE - TIMELINE
             table = soup.find('table', class_=re.compile(r'^ligne_vie'))
@@ -259,12 +277,12 @@ class Geneanet:
                 try:
                     cells = row.find_all("td")
                     td = cells[1]
-                    
+
                     for tag in td.find_all(['span', 'bdo', 'a']):
                         tag.unwrap()
 
                     for br in cells[1].find_all("br"):
-                        br.replace_with("<br>")  
+                        br.replace_with("<br>")
 
                     cleaned_html = cells[1].get_text(" ", strip=True)
                     cleaned_html = re.sub(r'[ \t]+', ' ', cleaned_html)  # Remove extra spaces (except newlines)
@@ -275,10 +293,14 @@ class Geneanet:
                     cleaned_html = re.sub(r'<br>', r'\n', cleaned_html)  # Replace <br> with new line
 
                     output = output + '- ' + cleaned_html + '\n'
-                except:
+                except AttributeError:
                     pass
-        except:
+                except Exception as e:
+                    display( f"Notes td: {type(e).__name__}", error=True )
+        except AttributeError:
             pass
+        except Exception as e:
+            display( f"Notes table: {type(e).__name__}", error=True )
 
         return ( person['notes'] if 'notes' in person else '' ) + ('\n' if ( 'notes' in person and len(output) > 0 ) else '') + output
 
@@ -322,35 +344,45 @@ class Geneanet:
     # -------------------------------------------------------------------------
     # _scrap_family
     # -------------------------------------------------------------------------
-    
+
     def _scrap_family( self, personref, soup ):
 
         family = {}
 
         try:
             marriage = soup.find("em").get_text()
-        except:
-            marriage = None
-                
-        # marriage date
-        try:
-            family['marriagedate'] = convert_date(marriage.split(',')[0].split()[1:])
-        except:
-            pass
 
-        # marriage place
-        try:
-            family['marriageplace'] = marriage[marriage.find(',') + 1:].strip()
-            family['marriageplace'] = ",".join( item.strip() for item in family['marriageplace'].split(",") )
-        except:
+            # marriage date
+            try:
+                family['marriagedate'] = convert_date(marriage.split(',')[0].split()[1:])
+
+                # marriage place
+                try:
+                    family['marriageplace'] = marriage[marriage.find(',') + 1:].strip()
+                    family['marriageplace'] = ",".join( item.strip() for item in family['marriageplace'].split(",") )
+                except Exception as e:
+                    display( f"Marriage place: {type(e).__name__}", error=True )
+
+            # except (IndexError, ParseError) as e:
+            except (IndexError, ValueError) as e:
+                pass
+            except Exception as e:
+                display( f"Marriage date: {type(e).__name__}", error=True )
+
+        except AttributeError:
             pass
+        except Exception as e:
+            display( f"Marriage: {type(e).__name__}", error=True )
 
         # spouses ref
         try:
             # first <a> can be a ref to sosa
             family['spousesref'] = [ clean_query( personref ), clean_query( [a for a in soup.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
-            
-        except:
+
+        except IndexError:
+            pass
+        except Exception as e:
+            display( f"Family spouses: {type(e).__name__}", error=True )
             family['spousesref'] = [ clean_query( personref ), None ]
 
         # annulation date
@@ -390,8 +422,11 @@ class Geneanet:
                 # first <a> can be a ref to sosa
                 childsref = childsref + [ clean_query( [a for a in item.find_all('a') if a.get_text(strip=True)][0]['href'] ) ]
             family['childsref'] = childsref
-        except:
+
+        except AttributeError:
             pass
+        except Exception as e:
+            display( f"Childs: {type(e).__name__}", error=True )
 
         # clean
         family = {k: v for k, v in family.items() if v is not None}
@@ -403,6 +438,9 @@ class Geneanet:
     # -------------------------------------------------------------------------
 
     def scrap( self, url, force = False ):
+        """
+        Function to scrap a geneanet page
+        """
 
         person = {}
 
@@ -411,7 +449,7 @@ class Geneanet:
             person['ref'] = clean_query( url )
 
             # read web page
-            
+
             sections = self._read( url, force )
 
             for section in sections:
@@ -429,8 +467,10 @@ class Geneanet:
 
                         person['portrait']['firstname'] = names[0].get_text().replace('\n', '').strip().title()
                         person['portrait']['lastname'] = names[1].get_text().replace('\n', '').strip().title()
-                    except:
+                    except AttributeError:
                         pass
+                    except Exception as e:
+                        display( f"Name: {type(e).__name__}", error=True )
 
                     # sex: should return M or F
                     try:
@@ -439,96 +479,128 @@ class Geneanet:
                         person['portrait']['sex'] = sex[0]['alt']
                         if person['portrait']['sex'] == 'H':
                             person['portrait']['sex'] = 'M'
-                    except:
+                    except AttributeError:
+                        pass
+                    except Exception as e:
+                        display( f"Sex: {type(e).__name__}", error=True )
                         person['portrait']['sex'] = 'U'
 
                     # birth
                     try:
                         birth = section.content.find_all('li', string=lambda text: "Né" in text if text else False)[0].get_text()
-                    except:
-                        birth = None
 
-                    try:
-                        person['portrait']['birthdate'] = convert_date(birth.split('-')[0].split()[1:])
-                    except:
-                        pass
+                        try:
+                            person['portrait']['birthdate'] = convert_date(birth.split('-')[0].split()[1:])
 
-                    try:
-                        person['portrait']['birthplace'] = birth[birth.find('-') + 1:].strip()
-                        person['portrait']['birthplace'] = ",".join( item.strip() for item in person['portrait']['birthplace'].split(",") )
-                    except:
+                            try:
+                                person['portrait']['birthplace'] = birth[birth.find('-') + 1:].strip()
+                                person['portrait']['birthplace'] = ",".join( item.strip() for item in person['portrait']['birthplace'].split(",") )
+                            except Exception as e:
+                                display( f"Birth place: {type(e).__name__}", error=True )
+
+                        except IndexError:
+                            pass
+                        except Exception as e:
+                            display( f"Birth date: {type(e).__name__}", error=True )
+
+                    except IndexError:
                         pass
+                    except Exception as e:
+                        display( f"Birth: {type(e).__name__}", error=True )
+
 
                     # death
                     try:
                         death = section.content.find_all('li', string=lambda text: "Décédé" in text if text else False)[0].get_text()
-                    except:
-                        death = None
 
-                    try:
-                        person['portrait']['deathdate'] = convert_date(death.split('-')[0].split()[1:])
-                    except:
-                        pass
+                        try:
+                            person['portrait']['deathdate'] = convert_date(death.split('-')[0].split()[1:])
 
-                    try:
-                        person['portrait']['deathplace'] = re.split(f"{re.escape(",\nà l'âge")}|{re.escape(", à l'âge")}", death[death.find('-') + 1:].strip())[0]
-                        person['portrait']['deathplace'] = ",".join( item.strip() for item in person['portrait']['deathplace'].split(",") )
-                    except:
+                            try:
+                                person['portrait']['deathplace'] = re.split(f"{re.escape(",\nà l'âge")}|{re.escape(", à l'âge")}", death[death.find('-') + 1:].strip())[0]
+                                person['portrait']['deathplace'] = ",".join( item.strip() for item in person['portrait']['deathplace'].split(",") )
+                            except Exception as e:
+                                display( f"Death place: {type(e).__name__}", error=True )
+
+                        except IndexError:
+                            pass
+                        except Exception as e:
+                            display( f"Death date: {type(e).__name__}", error=True )
+
+                    except IndexError:
                         pass
+                    except Exception as e:
+                        display( f"Death: {type(e).__name__}", error=True )
 
                     # baptem
                     try:
                         baptem = section.content.find_all('li', string=lambda text: "baptisé" in text.lower() if text else False)[0].get_text()
                         display("Processing baptem ")
-                    except:
-                        baptem = None
 
-                    try:
-                        person['portrait']['baptemdate'] = convert_date(baptem.split('-')[0].split()[1:])
-                    except:
-                        pass
+                        try:
+                            person['portrait']['baptemdate'] = convert_date(baptem.split('-')[0].split()[1:])
 
-                    try:
-                        person['portrait']['baptemplace'] = baptem[baptem.find('-') + 1:].strip()
-                        person['portrait']['baptemplace'] = ",".join( item.strip() for item in person['portrait']['baptemplace'].split(",") )
-                    except:
+                            try:
+                                person['portrait']['baptemplace'] = baptem[baptem.find('-') + 1:].strip()
+                                person['portrait']['baptemplace'] = ",".join( item.strip() for item in person['portrait']['baptemplace'].split(",") )
+                            except Exception as e:
+                                display( f"Baptem place: {type(e).__name__}", error=True )
+
+                        except Exception as e:
+                            display( f"Baptem date: {type(e).__name__}", error=True )
+
+                    except IndexError:
                         pass
+                    except Exception as e:
+                        display( f"Baptem: {type(e).__name__}", error=True )
 
                     # burial
                     try:
                         burial = section.content.find_all('li', string=lambda text: "inhumé" in text.lower() if text else False)[0].get_text()
                         display("Processing burial")
-                    except:
-                        burial = None
 
-                    try:
-                        person['portrait']['burialdate'] = convert_date(burial.split('-')[0].split()[1:])
-                    except:
-                        pass
+                        try:
+                            person['portrait']['burialdate'] = convert_date(burial.split('-')[0].split()[1:])
 
-                    try:
-                        person['portrait']['burialplace'] = burial[burial.find('-') + 1:].strip()
-                        person['portrait']['burialplace'] = ",".join( item.strip() for item in person['portrait']['burialplace'].split(",") )
-                    except:
+                            try:
+                                person['portrait']['burialplace'] = burial[burial.find('-') + 1:].strip()
+                                person['portrait']['burialplace'] = ",".join( item.strip() for item in person['portrait']['burialplace'].split(",") )
+                            except Exception as e:
+                                display( f"Burial place: {type(e).__name__}", error=True )
+
+                        except IndexError:
+                            pass
+                        except Exception as e:
+                            display( f"Burial date: {type(e).__name__}", error=True )
+
+                    except IndexError:
                         pass
+                    except Exception as e:
+                        display( f"Burial: {type(e).__name__}", error=True )
 
                     # occupation
                     try:
                         lines = section.content.find_all('li')
+                        words = [ 'né', 'décédé', 'baptisé', 'inhumé' ]
                         for line in lines:
-                            if 'né' not in line.get_text() and 'décédé' not in line.get_text() and 'baptisé' not in line.get_text() and 'inhumé' not in line.get_text():
-                                display("Processing occupation: %s"%(line.get_text()))
+                            if all(word not in line.get_text().lower() for word in words):
+                                display( "Processing occupation" )
                                 person['portrait']['occupation'] = line.get_text()
                                 break
-                    except:
-                        pass
+
+                    except Exception as e:
+                        display( f"Occupation: {type(e).__name__}" )
 
                     # adoption
                     try:
                         adoption = section.content.find_all('li', string=lambda text: "adopté" in text.lower() if text else False)[0].get_text()
-                        display("Add adoption processing")
-                    except:
+                        display( "Add adoption processing" )
+                        person['portrait']['adoption'] = adoption
+
+                    except IndexError:
                         pass
+                    except Exception as e:
+                        display( f"Adoption: {type(e).__name__}", error=True )
 
                     # clean
                     person['portrait'] = {k: v for k, v in person['portrait'].items() if v is not None}
@@ -539,8 +611,8 @@ class Geneanet:
                 elif 'parents' in section.name.lower():
                     try:
                         person['parentsref'] = [clean_query( item['href'] ) for item in section.content.find_all("a") if len( item.find_all("img", {"alt" : "sosa"}) ) == 0]
-                    except:
-                        pass
+                    except Exception as e:
+                        display( f"Parents: {type(e).__name__}", error=True )
 
                 # -------------------------------------------------------------
                 # Families section
@@ -551,12 +623,15 @@ class Geneanet:
                         unions = section.content.find('ul', class_=re.compile('.*fiche_union.*') ).find_all( "li", recursive=False )
 
                         for union in unions:
-                            try:                                
+                            try:
                                 person['families'] = person['families'] + [ self._scrap_family( person['ref'], union ) ]
-                            except:
-                                pass
-                    except:
+                            except Exception as e:
+                                display( f"Family scrap: {type(e).__name__}", error=True )
+
+                    except AttributeError:
                         pass
+                    except Exception as e:
+                        display( f"Union: {type(e).__name__}", error=True )
 
                 # -------------------------------------------------------------
                 # Freres et Soeurs section
@@ -564,20 +639,24 @@ class Geneanet:
                 elif 'freres et soeurs' in section.name.lower():
                     try:
                         person['siblingsref'] = []
+                        
                         for item in section.content.find("ul").find_all( "li", recursive=False ):
                             tag_a = item.find('a')
-                            if tag_a.get_text(strip=True): 
+                            if tag_a.get_text(strip=True):
                                 # first <a> can be a ref to sosa
                                 person['siblingsref'] = person['siblingsref'] + [ clean_query( tag_a['href'] ) ]
-                    except:
+
+                    except AttributeError:
                         pass
+                    except Exception as e:
+                        display( f"Siblings: {type(e).__name__}", error=True )
 
                 # -------------------------------------------------------------
                 # Famille section
                 # -------------------------------------------------------------
                 elif 'famille' in section.name.lower():
                     if len(section.content) > 0:
-                        display("Add processing for section: %s"%(section.name))
+                        display( f"Add processing for section: {section.name}" )
 
                 # -------------------------------------------------------------
                 # Relation, related or notes sections
@@ -594,7 +673,7 @@ class Geneanet:
                 elif 'sources' in section.name.lower():
                     if len(section.content) > 0:
                         try:
-                            display("Processing %s"%(section.name))
+                            display( f"Processing {section.name}" )
                             # Remove all elements before the <h2> tag
                             h2_element = section.content.find('h2')
                             if h2_element:
@@ -604,15 +683,15 @@ class Geneanet:
                                 notes = self._scrap_notes( person['portrait'], str(section.content) )
                                 if len(notes) > 0:
                                     person['portrait']['notes'] = notes
-                        except:
-                            pass
+                        except Exception as e:
+                            display( f"Sources: {type(e).__name__}", error=True )
 
                 # -------------------------------------------------------------
                 # Unprocess section
                 # -------------------------------------------------------------
                 else:
                     if len(section.content) > 0:
-                        display("Add processing for section: %s"%(section.name))
+                        display( f"Add processing for section: {section.name}" )
 
         except:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -625,6 +704,9 @@ class Geneanet:
     # informations
     # -------------------------------------------------------------------------
     def informations( self, url, force = False ):
+        """
+        Function to get informations about the Geneanet owner
+        """
 
         informations = {}
 

@@ -13,26 +13,41 @@
 # GNU General Public License for more details.
 #
 
-#-------------------------------------------------------------------------
+"""
+Package with common elements
+"""
+
+# -------------------------------------------------------------------------
 #
 # Used Python Modules
 #
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 
 import urllib
 from pathlib import Path
-import babel, babel.dates
+import babel
+import babel.dates
 
-#-------------------------------------------------------------------------
+# https://rich.readthedocs.io/en/stable/
+# pip3 install rich
+
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.text import Text
+from rich.pretty import pprint
+from rich.pretty import Pretty
+
+# -------------------------------------------------------------------------
 #
-# Date functions
+# convert_date
 #
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 
 def convert_date(datetab):
-    ''' Convert the french date format for birth/death/married lines
-    into an ISO date format
-    '''
+    """
+    Function to convert a date is french to GEDCOM date
+    """
 
     convert = {
         'ca': 'ABT',
@@ -47,7 +62,7 @@ def convert_date(datetab):
 
     try:
         if len(datetab) == 0:
-            return(None)
+            return None
 
         idx = 0
 
@@ -56,25 +71,25 @@ def convert_date(datetab):
         if len(datetab) == 1 or datetab[0] == 'en':
             # avoid a potential month
             if datetab[-1].isalpha():
-                return(datetab[-1][0:4])
+                return datetab[-1][0:4]
 
             # avoid a potential , after the year
             elif datetab[-1].isnumeric():
-                return(datetab[-1][0:4])
+                return datetab[-1][0:4]
 
         # Between date
 
         if datetab[0] == 'entre':
             try:
                 index = datetab.index("et")
-                return(convert[datetab[0]]+" "+convert_date(datetab[1:index])+" "+convert[datetab[index]]+" "+convert_date(datetab[index+1:]))
+                return convert[datetab[0]] + " " + convert_date(datetab[1:index]) + " " + convert[datetab[index]] + " " + convert_date(datetab[index+1:])
             except ValueError:
                 pass
 
         # Having prefix
 
-        if datetab[0] in list(convert.keys()):
-            return(convert[datetab[0]]+" "+convert_date(datetab[1:]))
+        if datetab[0] in convert:
+            return convert[datetab[0]] + " " + convert_date(datetab[1:])
 
         # Skip 'le' prefix
 
@@ -90,32 +105,37 @@ def convert_date(datetab):
 
         try:
             # day month year
-            bd1 = datetab[idx]+" "+str(list(months.keys())[list(months.values()).index(datetab[idx+1])])+" "+datetab[idx+2][0:4]
+            bd1 = datetab[idx] + " " + str(list(months.keys())[list(months.values()).index(datetab[idx+1])]) + " " + datetab[idx+2][0:4]
             bd2 = babel.dates.parse_date(bd1, locale='fr')
         except:
-            # day monthnum year 
-            bd1 = datetab[idx]+" "+datetab[idx+1]+" "+datetab[idx+2][0:4]
+            # day monthnum year
+            bd1 = datetab[idx] + " " + datetab[idx+1] + " " + datetab[idx+2][0:4]
             bd2 = babel.dates.parse_date(bd1, locale='fr')
 
-        return(bd2.strftime("%d %b %Y").upper())
-    except:
-        display( "Date error: %s"%(' '.join(datetab)), error=True )
-        return(None)
+        return bd2.strftime("%d %b %Y").upper()
 
-#-------------------------------------------------------------------------
+    except Exception as e:
+        display( f"Date error ({type(e).__name__}): {' '.join(datetab)}", error=True )
+        raise 
+
+# -------------------------------------------------------------------------
 #
-# Generic functions
+# clean_query
 #
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 
 def clean_query( url ):
+    """
+    Function to return the query part of an url without unnecessary geneanet queries
+    """
+
     queries = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
     if len(queries) > 0:
         queries_to_keep = [ 'm', 'v', 'p', 'n', 'oc', 'i' ]
 
         removed_queries = {k: v for k, v in queries.items() if k not in queries_to_keep + ['lang', 'pz', 'nz', 'iz']}
         if len(removed_queries) > 0:
-            display( "Removed queries: %s"%(removed_queries) )
+            display( f"Removed queries: {removed_queries}" )
 
         if 'n' not in queries:
             queries['n'] = ""
@@ -127,44 +147,50 @@ def clean_query( url ):
     else:
         return url
 
-def event( obj, tag, date, place ): 
+# -------------------------------------------------------------------------
+#
+# event
+#
+# -------------------------------------------------------------------------
+
+def event( obj, tag, date, place ):
+    """
+    Function to get GEDCOM for one event
+    """
+
     text = ""
     if isinstance( obj, dict ):
         data = obj
     else:
         data = vars(obj)
-    if date in data or place in data: # date in vars(obj)
-        text = text + "1 %s\n"%(tag)
+    if date in data or place in data:
+        text = text + f"1 {tag}\n"
         if date in data:
-            text = text + "2 DATE %s\n"%(data[date])
+            text = text + f"2 DATE {data[date]}\n"
         if place in data:
-            text = text + "2 PLAC %s\n"%(data[place])
+            text = text + f"2 PLAC {data[place]}\n"
     return text
 
+# -------------------------------------------------------------------------
+#
+# get_folder
+#
+# -------------------------------------------------------------------------
+
 def get_folder():
+    """
+    Function to get the home folder for output files
+    """
+
     folder = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "GeneanetScrap"
     folder.mkdir(exist_ok=True)
     return folder
 
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 #
 # Rich console
 #
-#-------------------------------------------------------------------------
-# https://rich.readthedocs.io/en/stable/
-# pip3 install rich
-
-from rich.console import Console
-from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.text import Text
-from rich.pretty import pprint
-from rich.table import Table
-from rich.prompt import Prompt
-from rich.traceback import install
-from rich.pretty import Pretty
-from rich.theme import Theme
-
+# -------------------------------------------------------------------------
 console = Console(record=True, width=132)
 
 HEADER1 = 1
@@ -175,22 +201,22 @@ NL = '\n'
 
 def display( what=None, title=None, level=0, error=False, exception=False ):
     """
-    My function to display various type of objects
+    Function to print with Rich console
     """
 
     try:
-        if isinstance( what, list ):
+        if exception:
+            console.print_exception(show_locals=False, max_frames=1)
+
+        elif isinstance( what, list ):
             pprint( what )
 
         elif isinstance( what, dict ):
 
             console.print( Panel( Pretty(what), title=title, title_align='left' ) )
-                
-        elif isinstance( what, str ):
-            if exception:
-                console.print_exception(show_locals=False, max_frames=1)
 
-            elif error:
+        elif isinstance( what, str ):
+            if error:
                 console.print( Text( what, style="white on red" ), NL)
 
             elif level == 1:
@@ -207,9 +233,8 @@ def display( what=None, title=None, level=0, error=False, exception=False ):
 
         elif isinstance( what, Markdown ):
 
-            #console.print( what.markup )
             console.print( what )
-                
+
         elif what:
             pprint( what )
 
@@ -217,10 +242,21 @@ def display( what=None, title=None, level=0, error=False, exception=False ):
         console.print_exception(show_locals=False, max_frames=1)
 
 def console_clear():
+    """
+    Function to clear the Rich console
+    """
     console.clear()
 
+
 def console_flush():
+    """
+    Function to flush the Rich console
+    """
     console._record_buffer = []
 
+
 def console_text():
+    """
+    Function to retrieve text from Rich console
+    """
     return console.export_text()
