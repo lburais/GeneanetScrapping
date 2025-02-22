@@ -363,6 +363,8 @@ class Geneanet:
             marriage = ' '.join( soup.find("em").get_text().split() ).rstrip(",")
             pattern = r"\s+([^-,\(]*)\s*(?:\(\s*(.*)\))?\s*(?:[,-]\s*(.*))?"
             family['marriagedate'], family['marriageplace'] = self._extract_date_place( marriage, "Marié", pattern)
+        except AttributeError:
+            pass
         except Exception as e:
             display( f"Marriage: {type(e).__name__}", error=True )
 
@@ -392,6 +394,8 @@ class Geneanet:
             divorce = soup.get_text().lower()
             pattern = r"\s*divorcés\s+(.*)\s*(?:-\s*(.*(?=dont)))?\s*(.*)"
             family['divorcedate'], noplace = self._extract_date_place( divorce, "Divorcé", pattern)
+        except AttributeError:
+            pass
         except Exception as e:
             display( f"Divorce: {type(e).__name__}", error=True )
 
@@ -539,6 +543,8 @@ class Geneanet:
                         pattern = r"\s*Née?\s+([^-\(]*)\s*(?:\(\s*(.*)\))?\s*(?:-\s*(.*))?"
                         event = ' '.join( section.content.find('li', string=lambda text: "Né" in text if text else False).get_text().split() )
                         person['portrait']['birthdate'], person['portrait']['birthplace'] = self._extract_date_place( event, "Né", pattern)
+                    except AttributeError:
+                        pass
                     except Exception as e:
                         display( f"Birth: {type(e).__name__}", error=True )
 
@@ -552,6 +558,8 @@ class Geneanet:
                         pattern = r"\s*Décédée?\s+([^-\(]*)\s*(?:\(\s*(.*)\))?\s*(?:-\s*(.*(?=, à)))?"
                         event = ' '.join( section.content.find('li', string=lambda text: "Décédé" in text if text else False).get_text().split() )
                         person['portrait']['deathdate'], person['portrait']['deathplace'] = self._extract_date_place( event, "Décédé", pattern)
+                    except AttributeError:
+                        pass
                     except Exception as e:
                         display( f"Death: {type(e).__name__}", error=True )
 
