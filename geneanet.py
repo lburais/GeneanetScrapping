@@ -69,6 +69,7 @@ class Geneanet:
     # -------------------------------------------------------------------------
     def __init__(self):
         self._folder = get_folder()
+        self._html = None
 
     # -------------------------------------------------------------------------
     # _load
@@ -137,10 +138,10 @@ class Geneanet:
                 # Get content in perso bloc
 
                 soup = BeautifulSoup(browser.page_source, 'html.parser')
-                perso = soup.find("div", {"id": "perso"})
+                self._html = soup.find("div", {"id": "perso"})
 
-                if not perso:
-                    perso = soup.find("div", {"id": "content"})
+                if not self._html:
+                    self._html = soup.find("div", {"id": "content"})
 
                 # process PDF
                 try:
@@ -165,26 +166,26 @@ class Geneanet:
 
                 try:
                     output_txt.unlink(missing_ok=True)
-                    output_txt.write_text( perso.prettify() )
+                    output_txt.write_text( self._html.prettify() )
                 except Exception as e:
                     display( f"Save HTML: {type(e).__name__}", error=True )
                     display( f'Failed to save HTML: {output_txt}', error=True )
 
             else:
                 display( f'Read from {output_txt}' )
-                perso = BeautifulSoup( output_txt.read_text(), 'html.parser' )
+                self._html = BeautifulSoup( output_txt.read_text(), 'html.parser' )
 
-        except:
+        except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            message = f'Exception [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
+            message = f'Exception {e} [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
             display( message, error=True )
             display( message, exception=True )
-            perso = None
+            self._html = None
 
         if browser:
             browser.quit()
 
-        return perso
+        return self._html
 
     # -------------------------------------------------------------------------
     # _read
@@ -228,9 +229,9 @@ class Geneanet:
 
                 comment.extract()
 
-        except:
+        except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            message = f'Exception [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
+            message = f'Exception {e} [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
             display( message, error=True )
 
         return contents
@@ -238,7 +239,7 @@ class Geneanet:
     # -------------------------------------------------------------------------
     # _scrap_notes
     # -------------------------------------------------------------------------
-    def _scrap_notes( self, person, html ):
+    def _scrap_notes( self, html ):
 
         output = ''
         soup = BeautifulSoup(html, 'html.parser')
@@ -302,7 +303,11 @@ class Geneanet:
         except Exception as e:
             display( f"Notes table: {type(e).__name__}", error=True )
 
-        return ( person['notes'] if 'notes' in person else '' ) + ('\n' if ( 'notes' in person and len(output) > 0 ) else '') + output
+        if len(output) > 0:
+            return [ output ]
+        else:
+            return []
+        return [ ]
 
     # -------------------------------------------------------------------------
     # _scrap_medias
@@ -364,8 +369,8 @@ class Geneanet:
                     display( f"Marriage place: {type(e).__name__}", error=True )
 
             # except (IndexError, ParseError) as e:
-            except (IndexError, ValueError) as e:
-                pass
+            except (IndexError, ValueError):
+                family['marriagetext'] = marriage
             except Exception as e:
                 display( f"Marriage date: {type(e).__name__}", error=True )
 
@@ -499,7 +504,7 @@ class Geneanet:
                                 display( f"Birth place: {type(e).__name__}", error=True )
 
                         except IndexError:
-                            pass
+                            person['portrait']['birthtext'] = birth
                         except Exception as e:
                             display( f"Birth date: {type(e).__name__}", error=True )
 
@@ -523,7 +528,7 @@ class Geneanet:
                                 display( f"Death place: {type(e).__name__}", error=True )
 
                         except IndexError:
-                            pass
+                            person['portrait']['deathtext'] = death
                         except Exception as e:
                             display( f"Death date: {type(e).__name__}", error=True )
 
@@ -546,6 +551,8 @@ class Geneanet:
                             except Exception as e:
                                 display( f"Baptem place: {type(e).__name__}", error=True )
 
+                        except IndexError:
+                            person['portrait']['baptemtext'] = baptem
                         except Exception as e:
                             display( f"Baptem date: {type(e).__name__}", error=True )
 
@@ -569,7 +576,7 @@ class Geneanet:
                                 display( f"Burial place: {type(e).__name__}", error=True )
 
                         except IndexError:
-                            pass
+                            person['portrait']['burialtext'] = burial
                         except Exception as e:
                             display( f"Burial date: {type(e).__name__}", error=True )
 
@@ -639,7 +646,7 @@ class Geneanet:
                 elif 'freres et soeurs' in section.name.lower():
                     try:
                         person['siblingsref'] = []
-                        
+
                         for item in section.content.find("ul").find_all( "li", recursive=False ):
                             tag_a = item.find('a')
                             if tag_a.get_text(strip=True):
@@ -663,9 +670,10 @@ class Geneanet:
                 # -------------------------------------------------------------
                 elif 'relation' in section.name.lower() or 'related' in section.name.lower() or 'notes' in section.name.lower():
                     if len(section.content) > 0:
-                        notes = self._scrap_notes( person['portrait'], str(section.content) )
-                        if len(notes) > 0:
-                            person['portrait']['notes'] = notes
+                        if 'notes' in person['portrait']:
+                            person['portrait']['notes'] = person['portrait']['notes'] + self._scrap_notes( str(section.content) )
+                        else:
+                            person['portrait']['notes'] = self._scrap_notes( str(section.content) )
 
                 # -------------------------------------------------------------
                 # Sources section
@@ -673,16 +681,16 @@ class Geneanet:
                 elif 'sources' in section.name.lower():
                     if len(section.content) > 0:
                         try:
-                            display( f"Processing {section.name}" )
                             # Remove all elements before the <h2> tag
                             h2_element = section.content.find('h2')
                             if h2_element:
                                 for element in h2_element.find_all_previous():
                                     element.decompose()
                             if len(section.content) > 0:
-                                notes = self._scrap_notes( person['portrait'], str(section.content) )
-                                if len(notes) > 0:
-                                    person['portrait']['notes'] = notes
+                                if 'notes' in person['portrait']:
+                                    person['portrait']['notes'] = person['portrait']['notes'] + self._scrap_notes( str(section.content) )
+                                else:
+                                    person['portrait']['notes'] = self._scrap_notes( str(section.content) )
                         except Exception as e:
                             display( f"Sources: {type(e).__name__}", error=True )
 
@@ -693,9 +701,9 @@ class Geneanet:
                     if len(section.content) > 0:
                         display( f"Add processing for section: {section.name}" )
 
-        except:
+        except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            message = f'Exception [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
+            message = f'Exception {e} [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
             display( message, error=True )
 
         return person
@@ -703,6 +711,7 @@ class Geneanet:
     # -------------------------------------------------------------------------
     # informations
     # -------------------------------------------------------------------------
+
     def informations( self, url, force = False ):
         """
         Function to get informations about the Geneanet owner
@@ -722,11 +731,26 @@ class Geneanet:
                 informations['author'] = perso.select( "div[class*='info-auteur']" )[0].find("strong").get_text().strip()
                 informations['persons'] = int(re.sub(r'\D', '', perso.select( "span[class*='stats-number']" )[0].get_text()))
                 informations['lastchange'] = [ p for p in perso.select( "p[class*='text-light']" ) if 'Dernière' in p.get_text() ][0]
-                informations['lastchange'] = convert_date( informations['lastchange'].find("span").get_text().split( '/' ))
+                informations['lastchange'] = convert_date( informations['lastchange'].find("span").get_text().split( '/' ) )
 
-        except:
+        except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            message = f'Something went wrong with scrapping [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
+            message = f'{e} within scrapping [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
             display( message, error=True )
 
         return informations
+
+    # -------------------------------------------------------------------------
+    # html
+    # -------------------------------------------------------------------------
+
+    @property
+    def html( self ):
+        """
+        Function to return the perso bloc
+        """
+
+        if hasattr( self, '_html' ):
+            return self._html.prettify()
+        else:
+            return ""

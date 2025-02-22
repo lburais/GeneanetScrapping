@@ -75,25 +75,30 @@ class GFamily():
 
         try:
             self._gedcomid = families_table[tuple(self._spousesref)]
-        except:
+        except Exception as e:
+            display( f"Family gedcom (1): {type(e).__name__}", error=True )
             try:
                 self._gedcomid = families_table[tuple(self._spousesref)[::-1]]
-            except:
-                pass
+            except Exception as e2:
+                display( f"Family gedcom (2): {type(e2).__name__}", error=True )
 
         self._spousesid = []
         for spouse in self._spousesref:
             try:
                 self._spousesid = self._spousesid + [ individuals_table[spouse] ]
-            except:
+            except KeyError:
                 self._spousesid = self._spousesid + [ None ]
+            except Exception as e:
+                display( f"Family spousesid: {type(e).__name__}", error=True )
 
         self._childsid = []
         for child in self._childsref:
             try:
                 self._childsid = self._childsid + [ individuals_table[child] ]
-            except:
+            except KeyError:
                 self._childsid = self._childsid + [ None ]
+            except Exception as e:
+                display( f"Family childid: {type(e).__name__}", error=True )
 
     # -------------------------------------------------------------------------
     # spousesref
@@ -141,10 +146,10 @@ class GFamily():
                     text = text + f"1 CHIL @{childid}@\n"
 
         events = {
-            'MARR': ( 'marriagedate', 'marriageplace'),
-            'DIV': ( 'divorcedate', 'divorceplace')
+            'MARR': { 'DATE': 'marriagedate', 'PLAC': 'marriageplace', 'NOTE': 'marriagetext' },
+            'DIV': { 'DATE': 'divorcedate', 'PLAC': 'divorceplace', 'NOTE': 'divorcetext' }
         }
-        text = text + ''.join( [ event( self, tag, values[0], values[1] ) for tag, values in events.items() ])
+        text = text + ''.join( [ event( self, tag, values ) for tag, values in events.items() ])
 
         text = text + "\n"
 
@@ -188,9 +193,9 @@ class GIndividual():
 
         self._portrait = {}
 
+        self._familyid = None
         self._parentsref = []
         self._parentsid = []
-        self._familyid = None
 
 
         self._siblingsref = []
@@ -201,8 +206,11 @@ class GIndividual():
 
         if 'geneanet' in url:
             # scrap geneanet page
-            geneanet = Geneanet()
-            individual = geneanet.scrap( url, force )
+            self._geneanet = Geneanet()
+            individual = self._geneanet.scrap( url, force )
+
+            if 'ref' in individual:
+                self._ref = individual['ref']
 
             if 'portrait' in individual:
                 self._portrait = individual['portrait']
@@ -227,42 +235,70 @@ class GIndividual():
         Function to set GEDCOM ids
         """
 
+        # INDI id
+
+        self._gedcomid = None
         try:
             self._gedcomid = individuals_table[self._ref]
-        except:
+        except KeyError:
             pass
+        except Exception as e:
+            display( f"Gedcom individual: {type(e).__name__}", error=True )
 
+        # Parents INDI id
+        
         self._parentsid = []
         for parent in self._parentsref:
             try:
                 self._parentsid = self._parentsid + [ individuals_table[parent] ]
-            except:
+            except KeyError:
+                pass
+            except Exception as e:
+                display( f"Parentsid: {type(e).__name__}", error=True )
                 self._parentsid = self._parentsid + [ None ]
 
-        try:
-            self._familyid = families_table[tuple(self._parentsref)]
-        except:
-            try:
-                self._familyid = families_table[tuple(self._parentsref)[::-1]]
-            except:
-                pass
-
+        # Siblings INDI id
+        
         self._siblingsid = []
         for sibling in self._siblingsref:
             try:
                 self._siblingsid = self._siblingsid + [ individuals_table[sibling] ]
-            except:
+            except KeyError:
+                self._siblingsid = self._siblingsid + [ None ]
+            except Exception as e:
+                display( f"Siblingsid: {type(e).__name__}", error=True )
                 self._siblingsid = self._siblingsid + [ None ]
 
+        # Parents FAM id
+        
+        self._familyid = None
+        try:
+            self._familyid = families_table[tuple(self._parentsref)]
+        except KeyError:
+            try:
+                self._familyid = families_table[tuple(self._parentsref)[::-1]]
+            except KeyError:
+                pass
+            except Exception as e2:
+                display( f"Familyid (2): {type(e2).__name__}", error=True )
+        except Exception as e:
+            display( f"Familyid (1): {type(e).__name__}", error=True )
+
+        # FAM id
+        
         self._familiesid = []
         for family in self._families:
             try:
                 self._familiesid = self._familiesid + [ families_table[tuple(family.spousesref)] ]
-            except:
+            except KeyError:
                 try:
                     self._familiesid = self._familiesid + [ families_table[tuple(family.spousesref)[::-1]] ]
-                except:
+                except Exception as e2:
+                    display( f"Familiesid (2): {type(e2).__name__}", error=True )
                     self._familiesid = self._familiesid + [ None ]
+            except Exception as e:
+                display( f"Familiesid (1): {type(e).__name__}", error=True )
+                self._familiesid = self._familiesid + [ None ]
 
     # -------------------------------------------------------------------------
     # url
@@ -345,6 +381,19 @@ class GIndividual():
         return self._families
 
     # -------------------------------------------------------------------------
+    # html
+    # -------------------------------------------------------------------------
+    @property
+    def html(self):
+        """
+        Property to get the html of the individual
+        """
+        if hasattr( self, '_geneanet'):
+            return self._geneanet.html
+        else:
+            return ""
+
+    # -------------------------------------------------------------------------
     # gedcom
     # -------------------------------------------------------------------------
     @property
@@ -352,6 +401,8 @@ class GIndividual():
         """
         Property to get the GEDCOM of the individual
         """
+
+        # portrait
 
         text = ""
         if hasattr(self, "_gedcomid"):
@@ -372,29 +423,36 @@ class GIndividual():
             text = text + f"1 SEX {self._portrait['sex']}\n"
 
         events = {
-            'BIRT': ( 'birthdate', 'birthplace'),
-            'DEAT': ( 'deathdate', 'deathplace'),
-            'BURI': ( 'burialdate', 'burialplace')
+            'BIRT': { 'DATE': 'birthdate', 'PLAC': 'birthplace', 'NOTE': 'birthtext' },
+            'DEAT': { 'DATE': 'deathdate', 'PLAC': 'deathplace', 'NOTE': 'deathtext' },
+            'BURI': { 'DATE': 'burialdate', 'PLAC': 'burialplace', 'NOTE': 'burialtext' }
         }
-        text = text + ''.join( [ event( self._portrait, tag, values[0], values[1] ) for tag, values in events.items() ])
+        text = text + ''.join( [ event( self._portrait, tag, values ) for tag, values in events.items() ])
+
+        # family
 
         for family in self._familiesid:
             if family:
                 text = text + f"1 FAMS @{family}@\n"
 
-        if hasattr(self, "_familyid"):
+        if hasattr(self, "_familyid") and not self._familyid is None:
             text = text + f"1 FAMC @{self._familyid}@\n"
 
-        if hasattr(self, "_notes"):
-            notes = self._notes.splitlines()
-            if len(notes) > 0:
-                text = text + f"1 NOTE {notes[0]}\n"
-                notes.pop(0)
-                for note in notes:
-                    text = text + f"2 CONT {note}\n"
+        # notes
 
-        if hasattr(self, "_url"):
+        if hasattr(self._portrait, "_notes"):
+            for note in self._portrait['notes']:
+                note = note.splitlines()
+                if len(note) > 0:
+                    text = text + f"1 NOTE {note[0]}\n"
+                    note.pop(0)
+                    for line in note:
+                        text = text + f"2 CONT {line}\n"
+
+        if hasattr(self, "_url") and not self._url is None:
             text = text + f"1 SOUR {self._url}\n"
+
+        # sources
 
         text = text + "\n"
 
@@ -469,8 +527,8 @@ class Genealogy():
                 for family in new_families:
                     if tuple(family.spousesref) not in self._families and tuple(family.spousesref)[::-1] not in self._families:
                         self._families[ tuple(family.spousesref) ] = family
-            except:
-                pass
+            except Exception as e:
+                display( f"Add individual: {type(e).__name__}", error=True )
 
             if level < self._max_level:
 
@@ -489,6 +547,7 @@ class Genealogy():
     # -------------------------------------------------------------------------
     # gedcom
     # -------------------------------------------------------------------------
+
     def gedcom( self, force = False ):
         """
         Function to get the GEDCOM of the genealogy
@@ -581,3 +640,18 @@ class Genealogy():
 
         for family in self._families.values():
             family.print()
+
+    # -------------------------------------------------------------------------
+    # html
+    # -------------------------------------------------------------------------
+
+    def html( self, url ):
+        """
+        Function to retrieve html for one individual
+        """
+
+        try:
+            return [v.html for v in self._individuals.values() if v.url == url][0]
+        except Exception as e:
+            display( f"Genealogy html: {type(e).__name__}", error=True )
+            return ""

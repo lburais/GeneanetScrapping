@@ -21,7 +21,7 @@
             "request": "launch",
             "program": "genealogy_scrapper.py",
             "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/comrade28?iz=0&p=nicholas&n=de+bacqueville' -l 0"
+            "args": "'https://gw.geneanet.org/lipari?pz=alexia&nz=henry&p=leon+desire+louis&n=bessey' -l 1 -a -s"
         },
         {
             "name": "3 gen",

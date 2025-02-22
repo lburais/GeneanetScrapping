@@ -66,6 +66,9 @@ def convert_date(datetab):
 
         idx = 0
 
+        # clean
+        datetab = [ v.strip() for v in datetab ]
+
         # Assuming there is just a year and last element is the year
 
         if len(datetab) == 1 or datetab[0] == 'en':
@@ -107,16 +110,18 @@ def convert_date(datetab):
             # day month year
             bd1 = datetab[idx] + " " + str(list(months.keys())[list(months.values()).index(datetab[idx+1])]) + " " + datetab[idx+2][0:4]
             bd2 = babel.dates.parse_date(bd1, locale='fr')
-        except:
+        except ValueError:
             # day monthnum year
             bd1 = datetab[idx] + " " + datetab[idx+1] + " " + datetab[idx+2][0:4]
             bd2 = babel.dates.parse_date(bd1, locale='fr')
+        except Exception as e:
+            display( f"Convert date: {type(e).__name__}", error=True )
 
         return bd2.strftime("%d %b %Y").upper()
 
     except Exception as e:
         display( f"Date error ({type(e).__name__}): {' '.join(datetab)}", error=True )
-        raise 
+        raise
 
 # -------------------------------------------------------------------------
 #
@@ -153,7 +158,7 @@ def clean_query( url ):
 #
 # -------------------------------------------------------------------------
 
-def event( obj, tag, date, place ):
+def event( obj, tag, values ):
     """
     Function to get GEDCOM for one event
     """
@@ -163,12 +168,14 @@ def event( obj, tag, date, place ):
         data = obj
     else:
         data = vars(obj)
-    if date in data or place in data:
-        text = text + f"1 {tag}\n"
-        if date in data:
-            text = text + f"2 DATE {data[date]}\n"
-        if place in data:
-            text = text + f"2 PLAC {data[place]}\n"
+
+    for key, value in values.items():
+        if value in data:
+            text = text + f"2 {key} {data[value]}\n"
+
+    if len(text) > 0:
+        text = f"1 {tag}\n" + text
+
     return text
 
 # -------------------------------------------------------------------------
@@ -185,6 +192,29 @@ def get_folder():
     folder = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "GeneanetScrap"
     folder.mkdir(exist_ok=True)
     return folder
+
+# -------------------------------------------------------------------------
+#
+# convert_to_rtf
+#
+# -------------------------------------------------------------------------
+
+def convert_to_rtf( text ):
+    """
+    Function to convert text to rtf 
+    """
+    def ansi_to_rtf( text ):
+        """Convert ANSI text (Windows-1252) to RTF-safe format."""
+        converted_text = ''.join(f"\\u{ord(c)}?" if ord(c) > 127 else c for c in text)
+        converted_text = converted_text.replace( "\n", "\\par ")
+        return converted_text
+
+    rtf_content = r"""{\rtf1\ansi\deff0
+{\fonttbl{\f0\fnil\fcharset0 Courier New;}}
+\viewkind4\uc1\pard\f0\fs20 %s \par
+}""" % ansi_to_rtf( text )
+
+    return rtf_content
 
 # -------------------------------------------------------------------------
 #
@@ -238,7 +268,8 @@ def display( what=None, title=None, level=0, error=False, exception=False ):
         elif what:
             pprint( what )
 
-    except:
+    except Exception as e:
+        display( f"Display: {type(e).__name__}", error=True )
         console.print_exception(show_locals=False, max_frames=1)
 
 def console_clear():

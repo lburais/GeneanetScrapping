@@ -38,7 +38,7 @@ import pygedcom
 #
 # -------------------------------------------------------------------------
 
-from common import display, console_clear, console_flush, console_text, get_folder
+from common import display, convert_to_rtf, console_clear, console_flush, console_text, get_folder
 from genealogy import Genealogy
 
 # -------------------------------------------------------------------------
@@ -59,21 +59,17 @@ def genealogy_scrapping( individual, ascendants=False, descendants=False, spouse
         if gedcom_file:
             gedcom_file.write_text( genealogy.gedcom( force ) )
 
-        try:
-            parser = pygedcom.GedcomParser( str(gedcom_file) )
-            parser.parse()
-            check = parser.verify()
+        parser = pygedcom.GedcomParser( str(gedcom_file) )
+        parser.parse()
+        check = parser.verify()
 
-            display("")
-            if check['status'] == 'ok':
-                display( parser.get_stats(), title=f"Your {str(gedcom_file)} file is valid" )
-            else:
-                display( check['message'], title=f"Your {str(gedcom_file)} file is not valid" )
+        display("")
+        if check['status'] == 'ok':
+            display( parser.get_stats(), title=f"Your {str(gedcom_file)} file is valid" )
+        else:
+            display( check['message'], title=f"Your {str(gedcom_file)} file is not valid" )
 
-        except:
-            pass
-
-    except:
+    except Exception:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         message = f'Something went wrong with scrapping [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
         display( message, error=True )
@@ -119,7 +115,7 @@ def main():
 
     if args.searchedindividual is None:
 
-        searchedgenealogy = [
+        searchedindividuals = [
             'https://gw.geneanet.org/lipari?p=leon+desire+louis&n=bessey',              # lipari - Léon Désiré Louis Bessey
             'https://gw.geneanet.org/asempey?n=jantieu&p=margueritte&oc=0',             # asempey - Marguerite Jantieu
             'https://gw.geneanet.org/iraird?p=nicholas&n=le+teuton',                    # iraird - Nicholas le Teuton
@@ -139,7 +135,7 @@ def main():
         ]
 
     else:
-        searchedgenealogy = [ args.searchedindividual ]
+        searchedindividuals = [ args.searchedindividual ]
 
     params = {
         'force' : force,
@@ -147,19 +143,19 @@ def main():
         'descendants' : descendants,
         'spouses' : spouses,
         'max_levels' : max_levels,
-        'searchedgenealogy' : searchedgenealogy
+        'searchedindividuals' : searchedindividuals
     }
     display( params, title="Paramùeters")
 
     # Process searched genealogy
 
-    for searchedindividual in searchedgenealogy:
+    for searchedindividual in searchedindividuals:
 
         userid = re.sub( r'^/', '', urllib.parse.urlparse(searchedindividual).path )
 
         # disable screenlock
 
-        process= subprocess.Popen(["caffeinate", "-d"])
+        process = subprocess.Popen(["caffeinate", "-d"])
 
         # Scrap geneanet
 
@@ -177,11 +173,10 @@ def main():
 
         display( "" )
 
-        #output_file = root_folder / "output" / f"{userid}_logs_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
-        output_file = root_folder / "output" / f"{userid}_logs.txt"
+        output_file = root_folder / "output" / f"{userid}_logs.rtf"
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.unlink(missing_ok=True)
-        output_file.write_text(console_text())  # Saves formatted text output
+        output_file.write_text(convert_to_rtf(console_text()))  # Saves formatted text output
 
         # Save outcome
 
@@ -189,10 +184,17 @@ def main():
 
         genealogy.print()
 
-        output_file = root_folder / "output" / f"{userid}_console.txt"
+        display( genealogy.gedcom(), title="GEDCOM" )
+
+        if len(searchedindividuals) == 1:
+            display( genealogy.html(searchedindividuals[0]), title="HTML" )
+
+        # display( f"python3 genealogy_scrapper.py -l 0", title="COMMAND")
+
+        output_file = root_folder / "output" / f"{userid}_console.rtf"
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.unlink(missing_ok=True)
-        output_file.write_text(console_text())
+        output_file.write_text(convert_to_rtf(console_text()))
 
 if __name__ == '__main__':
     main()
