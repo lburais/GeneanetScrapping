@@ -106,6 +106,12 @@ def convert_date(datetab):
 
         months = dict(babel.dates.get_month_names(width='wide', locale='fr'))
 
+        # Just month and year
+        if datetab[idx].lower() in months.values():
+            bd1 = "1" + " " + str(list(months.keys())[list(months.values()).index(datetab[idx])]) + " " + datetab[idx+1][0:4]
+            bd2 = babel.dates.parse_date(bd1, locale='fr')
+            return bd2.strftime("%b %Y").upper()
+
         try:
             # day month year
             bd1 = datetab[idx] + " " + str(list(months.keys())[list(months.values()).index(datetab[idx+1])]) + " " + datetab[idx+2][0:4]

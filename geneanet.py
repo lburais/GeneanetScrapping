@@ -439,6 +439,52 @@ class Geneanet:
         return family
 
     # -------------------------------------------------------------------------
+    # _extract_date_place
+    # -------------------------------------------------------------------------
+
+    def _extract_date_place( self, soup, key, pattern ):
+
+        try:
+            date = place = None
+
+            event = ' '.join( soup.find('li', string=lambda text: key in text if text else False).get_text().split() )
+            event = re.search( pattern, event )
+
+            display( f"{key.upper()} [{event.group(1)}] [{event.group(2) if event.group(2) else None}] [{event.group(3) if event.group(3) else None}]" )
+
+            try: # first date
+
+                date = convert_date(event.group(1).strip().split())
+
+            except IndexError:
+                try: # second date
+
+                    date = convert_date(event.group(2).strip().split() if event.group(2) else None)
+
+                except (IndexError, TypeError):
+                    pass
+                except Exception as e:
+                    display( f"{key.upper()} - date 2: {type(e).__name__}", error=True )
+            except Exception as e:
+                display( f"{key.upper()} - date 1: {type(e).__name__}", error=True )
+
+            try: # place
+
+                if date:
+                    place = event.group(3).strip() if event.group(3) else None
+
+            except Exception as e:
+                display( f"{key.upper()} - place: {type(e).__name__}", error=True )
+
+
+        except AttributeError:
+            pass
+        except Exception as e:
+            display( f"{key.upper()}: {type(e).__name__}", error=True )
+
+        return date, place
+
+    # -------------------------------------------------------------------------
     # scrap
     # -------------------------------------------------------------------------
 
@@ -491,49 +537,25 @@ class Geneanet:
                         person['portrait']['sex'] = 'U'
 
                     # birth
+                    # Assuming: <li> * Né * DAT1 * ( DAT2 ) * - (PLAC)
+                    # g1: up to ( or -
+                    # g2: optional between ( and )
+                    # g3: optional from - 
                     try:
-                        birth = section.content.find_all('li', string=lambda text: "Né" in text if text else False)[0].get_text()
-
-                        try:
-                            person['portrait']['birthdate'] = convert_date(birth.split('-')[0].split()[1:])
-
-                            try:
-                                person['portrait']['birthplace'] = birth[birth.find('-') + 1:].strip()
-                                person['portrait']['birthplace'] = ",".join( item.strip() for item in person['portrait']['birthplace'].split(",") )
-                            except Exception as e:
-                                display( f"Birth place: {type(e).__name__}", error=True )
-
-                        except IndexError:
-                            person['portrait']['birthtext'] = birth
-                        except Exception as e:
-                            display( f"Birth date: {type(e).__name__}", error=True )
-
-                    except IndexError:
-                        pass
+                        pattern = r"s*Née?(.*)\s*(?:\(\s*([\w\s]+)\s*\))?\s*(?:-\s*(.*))?"
+                        person['portrait']['birthdate'], person['portrait']['birthplace'] = self._extract_date_place( section.content, "Né", pattern)
                     except Exception as e:
                         display( f"Birth: {type(e).__name__}", error=True )
 
-
                     # death
+                    # Assuming: <li> * Décédé * DAT1 * ( DAT2 ) * - (PLAC) , à l'age *
+                    # g1: up to ( or -
+                    # g2: optional between ( and )
+                    # g3: optional from - to ", à"
                     try:
-                        death = section.content.find_all('li', string=lambda text: "Décédé" in text if text else False)[0].get_text()
-
-                        try:
-                            person['portrait']['deathdate'] = convert_date(death.split('-')[0].split()[1:])
-
-                            try:
-                                person['portrait']['deathplace'] = re.split(f"{re.escape(",\nà l'âge")}|{re.escape(", à l'âge")}", death[death.find('-') + 1:].strip())[0]
-                                person['portrait']['deathplace'] = ",".join( item.strip() for item in person['portrait']['deathplace'].split(",") )
-                            except Exception as e:
-                                display( f"Death place: {type(e).__name__}", error=True )
-
-                        except IndexError:
-                            person['portrait']['deathtext'] = death
-                        except Exception as e:
-                            display( f"Death date: {type(e).__name__}", error=True )
-
-                    except IndexError:
-                        pass
+                        #                       <---- g1 ---><------- g2 --------------><--------- g3 -------->
+                        pattern = r"\s*Décédée?\s+([^(-\))]*)\s*(?:\(\s*([\w\s]+)\s*\))?\s*(?:-\s*(.*(?=, à)))?"
+                        person['portrait']['deathdate'], person['portrait']['deathplace'] = self._extract_date_place( section.content, "Décédé", pattern)
                     except Exception as e:
                         display( f"Death: {type(e).__name__}", error=True )
 
