@@ -246,7 +246,7 @@ class GIndividual():
             display( f"Gedcom individual: {type(e).__name__}", error=True )
 
         # Parents INDI id
-        
+
         self._parentsid = []
         for parent in self._parentsref:
             try:
@@ -258,7 +258,7 @@ class GIndividual():
                 self._parentsid = self._parentsid + [ None ]
 
         # Siblings INDI id
-        
+
         self._siblingsid = []
         for sibling in self._siblingsref:
             try:
@@ -270,7 +270,7 @@ class GIndividual():
                 self._siblingsid = self._siblingsid + [ None ]
 
         # Parents FAM id
-        
+
         self._familyid = None
         try:
             self._familyid = families_table[tuple(self._parentsref)]
@@ -285,7 +285,7 @@ class GIndividual():
             display( f"Familyid (1): {type(e).__name__}", error=True )
 
         # FAM id
-        
+
         self._familiesid = []
         for family in self._families:
             try:

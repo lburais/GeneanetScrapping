@@ -354,28 +354,15 @@ class Geneanet:
 
         family = {}
 
+        # Marriage
+        # Assuming: <li> * Né * DAT1 * ( DAT2 ) * - (PLAC)
+        # g1: up to ( or - or ,
+        # g2: optional between ( and )
+        # g3: optional from - or ,
         try:
-            marriage = soup.find("em").get_text()
-
-            # marriage date
-            try:
-                family['marriagedate'] = convert_date(marriage.split(',')[0].split()[1:])
-
-                # marriage place
-                try:
-                    family['marriageplace'] = marriage[marriage.find(',') + 1:].strip()
-                    family['marriageplace'] = ",".join( item.strip() for item in family['marriageplace'].split(",") )
-                except Exception as e:
-                    display( f"Marriage place: {type(e).__name__}", error=True )
-
-            # except (IndexError, ParseError) as e:
-            except (IndexError, ValueError):
-                family['marriagetext'] = marriage
-            except Exception as e:
-                display( f"Marriage date: {type(e).__name__}", error=True )
-
-        except AttributeError:
-            pass
+            marriage = ' '.join( soup.find("em").get_text().split() ).rstrip(",")
+            pattern = r"\s+([^-,\(]*)\s*(?:\(\s*(.*)\))?\s*(?:[,-]\s*(.*))?"
+            family['marriagedate'], family['marriageplace'] = self._extract_date_place( marriage, "Marié", pattern)
         except Exception as e:
             display( f"Marriage: {type(e).__name__}", error=True )
 
@@ -395,10 +382,18 @@ class Geneanet:
             display("Add annulation processing")
             family['annulationdate'] = None
 
-        # divorce date
-        if 'divorcé' in soup.get_text().lower():
-            display("Add divorce processing")
-            family['divorcedate'] = None
+        # Divorce
+        # Assuming: * divorcé * DAT1 * dont *
+        # g1: up to dont
+        # g2: optional
+        # g3: optional
+        # ADD NON GREGORIAN PROCESSING ( DAT )
+        try:
+            divorce = soup.get_text().lower()
+            pattern = r"\s*divorcés\s+(.*)\s*(?:-\s*(.*(?=dont)))?\s*(.*)"
+            family['divorcedate'], noplace = self._extract_date_place( divorce, "Divorcé", pattern)
+        except Exception as e:
+            display( f"Divorce: {type(e).__name__}", error=True )
 
         # engagement date
         if 'annulé' in soup.get_text().lower():
@@ -442,12 +437,11 @@ class Geneanet:
     # _extract_date_place
     # -------------------------------------------------------------------------
 
-    def _extract_date_place( self, soup, key, pattern ):
+    def _extract_date_place( self, event, key, pattern ):
 
         try:
             date = place = None
 
-            event = ' '.join( soup.find('li', string=lambda text: key in text if text else False).get_text().split() )
             event = re.search( pattern, event )
 
             display( f"{key.upper()} [{event.group(1)}] [{event.group(2) if event.group(2) else None}] [{event.group(3) if event.group(3) else None}]" )
@@ -540,10 +534,11 @@ class Geneanet:
                     # Assuming: <li> * Né * DAT1 * ( DAT2 ) * - (PLAC)
                     # g1: up to ( or -
                     # g2: optional between ( and )
-                    # g3: optional from - 
+                    # g3: optional from -
                     try:
-                        pattern = r"s*Née?(.*)\s*(?:\(\s*([\w\s]+)\s*\))?\s*(?:-\s*(.*))?"
-                        person['portrait']['birthdate'], person['portrait']['birthplace'] = self._extract_date_place( section.content, "Né", pattern)
+                        pattern = r"\s*Née?\s+([^-\(]*)\s*(?:\(\s*(.*)\))?\s*(?:-\s*(.*))?"
+                        event = ' '.join( section.content.find('li', string=lambda text: "Né" in text if text else False).get_text().split() )
+                        person['portrait']['birthdate'], person['portrait']['birthplace'] = self._extract_date_place( event, "Né", pattern)
                     except Exception as e:
                         display( f"Birth: {type(e).__name__}", error=True )
 
@@ -554,8 +549,9 @@ class Geneanet:
                     # g3: optional from - to ", à"
                     try:
                         #                       <---- g1 ---><------- g2 --------------><--------- g3 -------->
-                        pattern = r"\s*Décédée?\s+([^(-\))]*)\s*(?:\(\s*([\w\s]+)\s*\))?\s*(?:-\s*(.*(?=, à)))?"
-                        person['portrait']['deathdate'], person['portrait']['deathplace'] = self._extract_date_place( section.content, "Décédé", pattern)
+                        pattern = r"\s*Décédée?\s+([^-\(]*)\s*(?:\(\s*(.*)\))?\s*(?:-\s*(.*(?=, à)))?"
+                        event = ' '.join( section.content.find('li', string=lambda text: "Décédé" in text if text else False).get_text().split() )
+                        person['portrait']['deathdate'], person['portrait']['deathplace'] = self._extract_date_place( event, "Décédé", pattern)
                     except Exception as e:
                         display( f"Death: {type(e).__name__}", error=True )
 
