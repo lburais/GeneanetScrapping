@@ -8,12 +8,12 @@
 
 
         {
-            "name": "List",
+            "name": "One",
             "type": "debugpy",
             "request": "launch",
             "program": "genealogy_scrapper.py",
             "console": "integratedTerminal",
-            "args": "-l 50 -a -s"
+            "args": "-l 100 -a -s -o"
         },
         {
             "name": "Single",

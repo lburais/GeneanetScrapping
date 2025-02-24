@@ -46,7 +46,7 @@ class GBase():
     """
     Class of common functions
     """
-        
+
     # -------------------------------------------------------------------------
     #
     # _event
@@ -540,14 +540,12 @@ class Genealogy(GBase):
         Function to add one individual to the genealogy
         """
 
-        if not self._parse:
-            self._parse = urllib.parse.urlparse(url)
-
-        if not self._user:
-            self._user = re.sub( r'^/', '', self._parse.path )
-
         if urllib.parse.urlparse(url).scheme == "":
             url = urllib.parse.urlunparse((self._parse.scheme, self._parse.netloc, self._parse.path, '', url, ''))
+        else:
+            self._parse = urllib.parse.urlparse(url)
+
+        self._user = re.sub( r'^/', '', self._parse.path )
 
         ref = clean_query( url )
         if ref not in self._individuals:
