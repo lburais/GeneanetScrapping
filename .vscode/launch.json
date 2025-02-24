@@ -13,7 +13,7 @@
             "request": "launch",
             "program": "genealogy_scrapper.py",
             "console": "integratedTerminal",
-            "args": "-l 5 -a -s"
+            "args": "-l 50 -a -s"
         },
         {
             "name": "Single",

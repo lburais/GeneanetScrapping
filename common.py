@@ -46,7 +46,7 @@ from rich.pretty import Pretty
 
 def convert_date(datetab):
     """
-    Function to convert a date is french to GEDCOM date
+    Function to convert a french date to GEDCOM date
     """
 
     convert = {
@@ -127,7 +127,7 @@ def convert_date(datetab):
 
     except Exception as e:
         display( f"Date error ({type(e).__name__}): {' '.join(datetab)}", error=True )
-        raise
+        raise ValueError from e
 
 # -------------------------------------------------------------------------
 #
@@ -160,32 +160,6 @@ def clean_query( url ):
 
 # -------------------------------------------------------------------------
 #
-# event
-#
-# -------------------------------------------------------------------------
-
-def event( obj, tag, values ):
-    """
-    Function to get GEDCOM for one event
-    """
-
-    text = ""
-    if isinstance( obj, dict ):
-        data = obj
-    else:
-        data = vars(obj)
-
-    for key, value in values.items():
-        if value in data:
-            text = text + f"2 {key} {data[value]}\n"
-
-    if len(text) > 0:
-        text = f"1 {tag}\n" + text
-
-    return text
-
-# -------------------------------------------------------------------------
-#
 # get_folder
 #
 # -------------------------------------------------------------------------
@@ -209,15 +183,17 @@ def convert_to_rtf( text ):
     """
     Function to convert text to rtf 
     """
+
     def ansi_to_rtf( text ):
-        """Convert ANSI text (Windows-1252) to RTF-safe format."""
+        """Convert ANSI text to RTF-safe format."""
         converted_text = ''.join(f"\\u{ord(c)}?" if ord(c) > 127 else c for c in text)
         converted_text = converted_text.replace( "\n", "\\par ")
+
         return converted_text
 
     rtf_content = r"""{\rtf1\ansi\deff0
 {\fonttbl{\f0\fnil\fcharset0 Courier New;}}
-\viewkind4\uc1\pard\f0\fs20 %s \par
+\viewkind4\uc1\pard\f0\fs24 %s \par
 }""" % ansi_to_rtf( text )
 
     return rtf_content

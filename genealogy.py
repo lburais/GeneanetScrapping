@@ -33,8 +33,42 @@ import urllib
 #
 # -------------------------------------------------------------------------
 
-from common import display, event, clean_query, convert_date
+from common import display, clean_query, convert_date
 from geneanet import Geneanet
+
+# --------------------------------------------------------------------------------------------------
+#
+# GBase class
+#
+# --------------------------------------------------------------------------------------------------
+
+class GBase():
+    """
+    Class of common functions
+    """
+        
+    # -------------------------------------------------------------------------
+    #
+    # _event
+    #
+    # -------------------------------------------------------------------------
+
+    def _event( self, data, events ):
+        """
+        Function to get GEDCOM for one event made of TAG, DATE and PLACE
+        """
+
+        text = ""
+        for event in events:
+            if event[1] in data and data[event[1]]:
+                text = f"1 {event[0]}\n"
+                if f"{event[1]}date" in data and data[f"{event[1]}date"]:
+                    text = text + f"2 DATE {data[f"{event[1]}date"]}\n"
+                if f"{event[1]}place" in data and data[f"{event[1]}place"]:
+                    text = text + f"2 PLAC {data[f"{event[1]}place"]}\n"
+
+
+        return text
 
 # --------------------------------------------------------------------------------------------------
 #
@@ -42,7 +76,7 @@ from geneanet import Geneanet
 #
 # --------------------------------------------------------------------------------------------------
 
-class GFamily():
+class GFamily(GBase):
     """
     Class of one family
     """
@@ -54,6 +88,9 @@ class GFamily():
     def __init__(self, family ):
 
         self._gedcomid = None
+
+        self._marriage = self._marriagedate = self._marriageplace = None
+        self._divorce = self._divorcedate = self._divorceplace = None
 
         self._spousesref = []
         self._spousesid = []
@@ -145,11 +182,8 @@ class GFamily():
                 if childid:
                     text = text + f"1 CHIL @{childid}@\n"
 
-        events = {
-            'MARR': { 'DATE': 'marriagedate', 'PLAC': 'marriageplace', 'NOTE': 'marriagetext' },
-            'DIV': { 'DATE': 'divorcedate', 'PLAC': 'divorceplace', 'NOTE': 'divorcetext' }
-        }
-        text = text + ''.join( [ event( self, tag, values ) for tag, values in events.items() ])
+        events = [ ( 'MARR', 'marriage'), ( 'DIV', 'divorce' )]
+        text = text + self._event( vars(self), events )
 
         text = text + "\n"
 
@@ -172,7 +206,7 @@ class GFamily():
 #
 # --------------------------------------------------------------------------------------------------
 
-class GIndividual():
+class GIndividual(GBase):
     """
     Class of one individual
     """
@@ -422,12 +456,8 @@ class GIndividual():
         if 'sex' in self._portrait:
             text = text + f"1 SEX {self._portrait['sex']}\n"
 
-        events = {
-            'BIRT': { 'DATE': 'birthdate', 'PLAC': 'birthplace', 'NOTE': 'birthtext' },
-            'DEAT': { 'DATE': 'deathdate', 'PLAC': 'deathplace', 'NOTE': 'deathtext' },
-            'BURI': { 'DATE': 'burialdate', 'PLAC': 'burialplace', 'NOTE': 'burialtext' }
-        }
-        text = text + ''.join( [ event( self._portrait, tag, values ) for tag, values in events.items() ])
+        events = [ ( 'BIRT', 'birth'), ( 'DEAT', 'death'), ( 'BURI', 'burial' ) ]
+        text = text + self._event( self._portrait, events )
 
         # family
 
@@ -479,7 +509,7 @@ class GIndividual():
 #
 # --------------------------------------------------------------------------------------------------
 
-class Genealogy():
+class Genealogy(GBase):
     """
     Class for the complete genealogy
     """
