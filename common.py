@@ -24,11 +24,22 @@ Package with common elements
 # -------------------------------------------------------------------------
 
 import urllib
+import os
+import sys
+import base64
 from pathlib import Path
+
+# https://pypi.org/project/babel/
+# pip3 install babel
 import babel
 import babel.dates
 
+# https://pypi.org/project/weasyprint/
+# pip3 install weasyprint
+from weasyprint import HTML
+
 # https://rich.readthedocs.io/en/stable/
+# https://pypi.org/project/rich/
 # pip3 install rich
 
 from rich.console import Console
@@ -38,10 +49,19 @@ from rich.text import Text
 from rich.pretty import pprint
 from rich.pretty import Pretty
 
+# https://pypi.org/project/selenium/
+# pip3 install selenium
+
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.common.exceptions import TimeoutException
+
 # -------------------------------------------------------------------------
-#
 # convert_date
-#
 # -------------------------------------------------------------------------
 
 def convert_date(datetab):
@@ -130,9 +150,7 @@ def convert_date(datetab):
         raise ValueError from e
 
 # -------------------------------------------------------------------------
-#
 # clean_query
-#
 # -------------------------------------------------------------------------
 
 def clean_query( url ):
@@ -159,9 +177,7 @@ def clean_query( url ):
         return url
 
 # -------------------------------------------------------------------------
-#
 # get_folder
-#
 # -------------------------------------------------------------------------
 
 def get_folder():
@@ -174,9 +190,7 @@ def get_folder():
     return folder
 
 # -------------------------------------------------------------------------
-#
 # convert_to_rtf
-#
 # -------------------------------------------------------------------------
 
 def convert_to_rtf( text ):
@@ -199,17 +213,10 @@ def convert_to_rtf( text ):
     return rtf_content
 
 # -------------------------------------------------------------------------
-#
-# Rich console
-#
+# display
 # -------------------------------------------------------------------------
+
 console = Console(record=True, width=132)
-
-HEADER1 = 1
-HEADER2 = 2
-HEADER3 = 3
-
-NL = '\n'
 
 def display( what=None, title=None, level=0, error=False, exception=False ):
     """
@@ -229,13 +236,13 @@ def display( what=None, title=None, level=0, error=False, exception=False ):
 
         elif isinstance( what, str ):
             if error:
-                console.print( Text( what, style="white on red" ), NL)
+                console.print( Text( what, style="white on red" ), '\n')
 
             elif level == 1:
-                console.print( Panel( Text(what.upper(), style="white"), style="white on cyan" ), NL)
+                console.print( Panel( Text(what.upper(), style="white"), style="white on cyan" ), '\n')
 
             elif level > 1:
-                console.print( Panel( Text(what), style="cyan" ), NL)
+                console.print( Panel( Text(what), style="cyan" ), '\n')
 
             elif title:
                 console.print( Panel( Text(what), title=title ))
@@ -254,22 +261,137 @@ def display( what=None, title=None, level=0, error=False, exception=False ):
         display( f"Display: {type(e).__name__}", error=True )
         console.print_exception(show_locals=False, max_frames=1)
 
+# -------------------------------------------------------------------------
+# console_clear
+# -------------------------------------------------------------------------
+
 def console_clear():
     """
     Function to clear the Rich console
     """
     console.clear()
 
+# -------------------------------------------------------------------------
+# console_save
+# -------------------------------------------------------------------------
 
-def console_flush():
+def console_save( output ):
     """
-    Function to flush the Rich console
+    Function to save text from Rich console into a PDF file
     """
+
+    print_options = """<head>
+        <style>
+            @page {
+                size: A4 landscape;
+                margin: 0.25in;
+            }
+            body {
+                font-family: Courier, monospace;
+                font-size: 10pt;
+            }
+    """
+
+    output_file = Path(output).resolve().with_suffix(".pdf")
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.unlink(missing_ok=True)
+
+    text = console.export_html()
+    text = text.replace( "<head>", print_options )
+
+    HTML(string=text ).write_pdf(str(output_file))
+
+    # output_file = Path(output).resolve().with_suffix(".html")
+    # output_file.parent.mkdir(parents=True, exist_ok=True)
+    # output_file.unlink(missing_ok=True)
+
+    # output_file.write_text( text )
+
     console._record_buffer = []
 
+# -------------------------------------------------------------------------
+# load_chrome
+# -------------------------------------------------------------------------
 
-def console_text():
+def load_chrome( url, output_pdf=None, landscape=False):
     """
-    Function to retrieve text from Rich console
+    Function to load a page with Chrome then save as pdf and return html
     """
-    return console.export_text()
+
+    html = None
+    headless = urllib.parse.urlparse(url).scheme == 'file'
+
+    try:
+        # Chrome setup
+
+        chrome_options = webdriver.ChromeOptions()
+        if headless:
+            chrome_options.add_argument("--headless")  # Headless mode to avoid opening a browser window
+        chrome_options.add_argument("--kiosk-printing")  # Enables silent printing
+        chrome_options.add_argument("--disable-gpu")  # Disables GPU acceleration (helpful in some cases)
+
+        # Configure Chrome print settings to save as PDF
+        output_pdf.parent.mkdir(parents=True, exist_ok=True)
+        output_pdf.unlink(missing_ok=True)
+
+        chrome_options.add_experimental_option("prefs", {
+            "printing.print_preview_sticky_settings.appState": '{"recentDestinations":[{"id":"Save as PDF","origin":"local"}],"selectedDestinationId":"Save as PDF","version":2}',
+            "savefile.default_directory": str(output_pdf)
+        })
+
+        service = Service()  # No need to specify path if using Selenium 4.6+
+        browser = webdriver.Chrome(service=service, options=chrome_options)
+
+        # let's go browse
+
+        browser.get(url)
+
+        if not headless:
+
+            # wait for button click
+
+            try:
+                consent_button = WebDriverWait(browser, 20).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
+                )
+                ActionChains(browser).move_to_element(consent_button).click().perform()
+            except TimeoutException:
+                pass
+            except Exception as e:
+                display( f"Clickable: {type(e).__name__}", error=True )
+
+        # Process PDF
+        try:
+            # Use Chrome DevTools Protocol (CDP) to print as PDF
+            pdf_settings = {
+                "landscape": landscape,
+                "paperWidth": 8.5,
+                "paperHeight": 11,
+                "displayHeaderFooter": True,
+                "printBackground": False
+            }
+
+            # Execute CDP command to save as PDF
+            pdf_data = browser.execute_cdp_cmd("Page.printToPDF", pdf_settings)
+
+            # Save PDF to file
+            output_pdf.write_bytes(base64.b64decode(pdf_data["data"]))
+        except Exception as e:
+            display( f"Save PDF: {type(e).__name__}", error=True )
+            display( f'Failed to save PDF: {output_pdf}', error=True )
+
+        # Get HTML
+
+        html = browser.page_source
+
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        message = f'Exception {e} [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
+        display( message, error=True )
+        display( message, exception=True )
+        html = None
+
+    if browser:
+        browser.quit()
+
+    return html

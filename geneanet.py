@@ -25,7 +25,6 @@ Package to process Geneanet pages
 
 import re
 from collections import namedtuple
-import base64
 import sys
 import os
 import urllib
@@ -35,23 +34,13 @@ import urllib
 
 from bs4 import BeautifulSoup, Comment
 
-# https://pypi.org/project/selenium/
-# pip3 install selenium
-
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.chrome.service import Service
-
 #-------------------------------------------------------------------------
 #
 # Internal Python Modules
 #
 #-------------------------------------------------------------------------
 
-from common import display, get_folder, convert_date, clean_query
+from common import display, get_folder, convert_date, clean_query, load_chrome
 
 #-------------------------------------------------------------------------
 #
@@ -149,69 +138,19 @@ class Geneanet:
             else:
                 url = url + "?lang=fr"
 
-            browser = None
-
             if force is True or not output_txt.exists():
 
                 display( f'Load from {url}' )
 
-                # Chrome setup
-
-                chrome_options = webdriver.ChromeOptions()
-                # chrome_options.add_argument("--headless")  # Headless mode to avoid opening a browser window
-                chrome_options.add_argument("--kiosk-printing")  # Enables silent printing
-                chrome_options.add_argument("--disable-gpu")  # Disables GPU acceleration (helpful in some cases)
-
-                # Configure Chrome print settings to save as PDF
-                output_pdf = output_folder / (output_file + ".pdf")
-                output_pdf.unlink(missing_ok=True)
-
-                chrome_options.add_experimental_option("prefs", {
-                    "printing.print_preview_sticky_settings.appState": '{"recentDestinations":[{"id":"Save as PDF","origin":"local"}],"selectedDestinationId":"Save as PDF","version":2}',
-                    "savefile.default_directory": str(output_pdf)
-                })
-
-                service = Service()  # No need to specify path if using Selenium 4.6+
-                browser = webdriver.Chrome(service=service, options=chrome_options)
-
-                # let's go browse
-
-                browser.get(url)
-
-                try:
-                    consent_button = WebDriverWait(browser, 20).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
-                    )
-                    ActionChains(browser).move_to_element(consent_button).click().perform()
-                except Exception as e:
-                    display( f"Clickable: {type(e).__name__}", error=True )
+                self._html = load_chrome( url, output_folder / (output_file + ".pdf") )
 
                 # Get content in perso bloc
 
-                soup = BeautifulSoup(browser.page_source, 'html.parser')
+                soup = BeautifulSoup(self._html, 'html.parser')
                 self._html = soup.find("div", {"id": "perso"})
 
                 if not self._html:
                     self._html = soup.find("div", {"id": "content"})
-
-                # process PDF
-                try:
-                    # Use Chrome DevTools Protocol (CDP) to print as PDF
-                    pdf_settings = {
-                        "landscape": False,
-                        "displayHeaderFooter": True,
-                        "printBackground": False,
-                        # "preferCSSPageSize": True
-                    }
-
-                    # Execute CDP command to save as PDF
-                    pdf_data = browser.execute_cdp_cmd("Page.printToPDF", pdf_settings)
-
-                    # Save PDF to file
-                    output_pdf.write_bytes(base64.b64decode(pdf_data["data"]))
-                except Exception as e:
-                    display( f"Save PDF: {type(e).__name__}", error=True )
-                    display( f'Failed to save PDF: {output_pdf}', error=True )
 
                 # process perso
 
@@ -232,9 +171,6 @@ class Geneanet:
             display( message, error=True )
             display( message, exception=True )
             self._html = None
-
-        if browser:
-            browser.quit()
 
         return self._html
 
@@ -592,7 +528,7 @@ class Geneanet:
                         for line in lines:
                             if all(word not in line.get_text().lower() for word in words):
                                 person['portrait']['occupation'] = ' '.join( line.get_text().split() )
-                                display( f"Processing occupation: {person['portrait']['occupation']}" )
+                                display( f"OCCUPATION: {person['portrait']['occupation']}" )
                                 break
 
                     except Exception as e:

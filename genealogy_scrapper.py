@@ -38,7 +38,7 @@ import pygedcom
 #
 # -------------------------------------------------------------------------
 
-from common import display, convert_to_rtf, console_clear, console_flush, console_text, get_folder
+from common import display, console_save, get_folder
 from genealogy import Genealogy
 
 # -------------------------------------------------------------------------
@@ -108,6 +108,8 @@ def genealogy_scrapping( individuals, ascendants=False, descendants=False, spous
 
             gedcom.write_text( genealogy.gedcom( force ) )
 
+            # Validate GEDCOM output
+
             parser = pygedcom.GedcomParser( str(gedcom) )
             parser.parse()
             check = parser.verify()
@@ -118,19 +120,13 @@ def genealogy_scrapping( individuals, ascendants=False, descendants=False, spous
             else:
                 display( check['message'], title=f"Your {str(gedcom)} file is not valid" )
 
-
             # Save logs
 
             display( "" )
 
-            output_file = root_folder / "output" / f"{userid}_logs.rtf"
-            output_file.parent.mkdir(parents=True, exist_ok=True)
-            output_file.unlink(missing_ok=True)
-            output_file.write_text(convert_to_rtf(console_text()))  # Saves formatted text output
+            console_save( root_folder / "output" / f"{userid}_logs" )
 
             # Save outcome
-
-            console_flush()
 
             genealogy.print()
 
@@ -139,12 +135,7 @@ def genealogy_scrapping( individuals, ascendants=False, descendants=False, spous
             if len(individuals) == 1:
                 display( genealogy.html(individuals[0]), title="HTML" )
 
-            # display( f"python3 genealogy_scrapper.py -l 0", title="COMMAND")
-
-            output_file = root_folder / "output" / f"{userid}_console.rtf"
-            output_file.parent.mkdir(parents=True, exist_ok=True)
-            output_file.unlink(missing_ok=True)
-            output_file.write_text(convert_to_rtf(console_text()))
+            console_save( root_folder / "output" / f"{userid}" )
 
 ###################################################################################################################################
 # main
@@ -154,8 +145,6 @@ def main():
     """
     Main function to go by command line arguments and default setup
     """
-
-    console_clear()
 
     display( "Genealogy Scrapper", level=1 )
 

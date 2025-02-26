@@ -607,7 +607,7 @@ class Genealogy(GBase):
         gedcom = gedcom + "2 VERS 1.0\n"
         gedcom = gedcom + "2 NAME Genealogy Scrapping\n"
         gedcom = gedcom + "1 GEDC\n"
-        gedcom = gedcom + "2 VERS 5.5\n"
+        gedcom = gedcom + "2 VERS 5.5.1\n"
         gedcom = gedcom + "2 FORM LINEAGE-LINKED\n"
         gedcom = gedcom + "1 CHAR UTF-8\n"
         gedcom = gedcom + "1 SUBM @B00000@\n"
@@ -654,14 +654,15 @@ class Genealogy(GBase):
     # print
     # -------------------------------------------------------------------------
 
-    def print( self ):
+    def print( self, all_details=False ):
         """
         Function to print the genealogy
         """
 
-        display( self._individuals, title=f"{len(self._individuals)} Individuals" )
+        if all_details:
+            display( self._individuals, title=f"{len(self._individuals)} Individuals" )
 
-        display( self._families, title=f"{len(self._families)} Families" )
+            display( self._families, title=f"{len(self._families)} Families" )
 
         for individual in self._individuals.values():
             individual.print()
