@@ -193,24 +193,24 @@ def get_folder():
 # convert_to_rtf
 # -------------------------------------------------------------------------
 
-def convert_to_rtf( text ):
-    """
-    Function to convert text to rtf 
-    """
+# def convert_to_rtf( text ):
+#     """
+#     Function to convert text to rtf 
+#     """
 
-    def ansi_to_rtf( text ):
-        """Convert ANSI text to RTF-safe format."""
-        converted_text = ''.join(f"\\u{ord(c)}?" if ord(c) > 127 else c for c in text)
-        converted_text = converted_text.replace( "\n", "\\par ")
+#     def ansi_to_rtf( text ):
+#         """Convert ANSI text to RTF-safe format."""
+#         converted_text = ''.join(f"\\u{ord(c)}?" if ord(c) > 127 else c for c in text)
+#         converted_text = converted_text.replace( "\n", "\\par ")
 
-        return converted_text
+#         return converted_text
 
-    rtf_content = r"""{\rtf1\ansi\deff0
-{\fonttbl{\f0\fnil\fcharset0 Courier New;}}
-\viewkind4\uc1\pard\f0\fs24 %s \par
-}""" % ansi_to_rtf( text )
+#     rtf_content = r"""{\rtf1\ansi\deff0
+# {\fonttbl{\f0\fnil\fcharset0 Courier New;}}
+# \viewkind4\uc1\pard\f0\fs24 %s \par
+# }""" % ansi_to_rtf( text )
 
-    return rtf_content
+#     return rtf_content
 
 # -------------------------------------------------------------------------
 # display

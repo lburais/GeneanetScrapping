@@ -193,12 +193,23 @@ class GFamily(GBase):
     # print
     # -------------------------------------------------------------------------
 
-    def print( self ):
+    def print( self, short=False ):
         """
         Function to print the family
         """
 
-        display( vars(self), title=f"Family [{self._gedcomid}]: {self._spousesref}" )
+        p = vars(self).copy()
+
+        if short:
+            removed_keys = []
+
+            p = { key: value for key, value in p.items() if not key in removed_keys }
+
+            p = { key: value for key, value in p.items() if not value is None }
+            
+            p = { key: value for key, value in p.items() if not ( isinstance( value, list) and len(value) == 0 ) }
+
+        display( p, title=f"Family: {self._spousesref}" )
 
 # --------------------------------------------------------------------------------------------------
 #
@@ -260,6 +271,11 @@ class GIndividual(GBase):
 
         else:
             display( f"Add processing for {url}", error=True )
+
+        self.print(True)
+
+        for family in self._families:
+            family.print(True)
 
     # -------------------------------------------------------------------------
     # setids
@@ -492,16 +508,26 @@ class GIndividual(GBase):
     # print
     # -------------------------------------------------------------------------
 
-    def print( self ):
+    def print( self, short=False ):
         """
         Function to print the individual
         """
 
         p = vars(self).copy()
-        # del p['_notes']
-        display( p, title=f"Individual [{self._gedcomid}]: {self._ref}" )
-        # if individual.notes != "":
-        #    display( individual.notes, title="" )
+
+        if short:
+            removed_keys = ['_gedcom', '_parentsid', '_siblingsref', '_siblingsid', '_familyid', '_geneanet', '_families', '_familiesid']
+
+            p = { key: value for key, value in p.items() if not key in removed_keys }
+
+            p = { key: value for key, value in p.items() if not value is None }
+            
+            p = { key: value for key, value in p.items() if not ( isinstance( value, list) and len(value) == 0 ) }
+
+            if '_notes' in p['_portrait']:
+                del p['_portrait']['_notes']
+        
+        display( p, title=f"Individual: {self._ref}" )
 
 # --------------------------------------------------------------------------------------------------
 #
@@ -665,10 +691,10 @@ class Genealogy(GBase):
             display( self._families, title=f"{len(self._families)} Families" )
 
         for individual in self._individuals.values():
-            individual.print()
+            individual.print(short=False)
 
         for family in self._families.values():
-            family.print()
+            family.print(short=False)
 
     # -------------------------------------------------------------------------
     # html

@@ -120,11 +120,11 @@ def genealogy_scrapping( individuals, ascendants=False, descendants=False, spous
             else:
                 display( check['message'], title=f"Your {str(gedcom)} file is not valid" )
 
-            # Save logs
+            # Save Rich output
 
             display( "" )
 
-            console_save( root_folder / "output" / f"{userid}_logs" )
+            console_save( root_folder / "output" / f"{userid}" )
 
             # Save outcome
 
@@ -135,7 +135,7 @@ def genealogy_scrapping( individuals, ascendants=False, descendants=False, spous
             if len(individuals) == 1:
                 display( genealogy.html(individuals[0]), title="HTML" )
 
-            console_save( root_folder / "output" / f"{userid}" )
+            console_save( root_folder / "output" / f"{userid}_tree" )
 
 ###################################################################################################################################
 # main
