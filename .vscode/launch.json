@@ -16,6 +16,14 @@
             "args": "-l 100 -a -s -o"
         },
         {
+            "name": "All",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "genealogy_scrapper.py",
+            "console": "integratedTerminal",
+            "args": "-l 200 -a -s"
+        },
+        {
             "name": "Single",
             "type": "debugpy",
             "request": "launch",
@@ -38,14 +46,6 @@
             "program": "genealogy_scrapper.py",
             "console": "integratedTerminal",
             "args": "'https://gw.geneanet.org/lipari?pz=alexia&nz=henry&p=leon+desire+louis&n=bessey' -l 100 -a -s -d"
-        },
-        {
-            "name": "All",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "genealogy_scrapper.py",
-            "console": "integratedTerminal",
-            "args": "-l 50 -a -s"
         }
     ]
 }

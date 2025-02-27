@@ -29,6 +29,11 @@ import sys
 import base64
 from pathlib import Path
 
+# https://pypi.org/project/beautifulsoup4/
+# pip3 install bs4
+
+from bs4 import BeautifulSoup
+
 # https://pypi.org/project/babel/
 # pip3 install babel
 import babel
@@ -193,24 +198,24 @@ def get_folder():
 # convert_to_rtf
 # -------------------------------------------------------------------------
 
-# def convert_to_rtf( text ):
-#     """
-#     Function to convert text to rtf 
-#     """
+def convert_to_rtf( text ):
+    """
+    Function to convert text to rtf
+    """
 
-#     def ansi_to_rtf( text ):
-#         """Convert ANSI text to RTF-safe format."""
-#         converted_text = ''.join(f"\\u{ord(c)}?" if ord(c) > 127 else c for c in text)
-#         converted_text = converted_text.replace( "\n", "\\par ")
+    def ansi_to_rtf( text ):
+        """Convert ANSI text to RTF-safe format."""
+        converted_text = ''.join(f"\\u{ord(c)}?" if ord(c) > 127 else c for c in text)
+        converted_text = converted_text.replace( "\n", "\\par ")
 
-#         return converted_text
+        return converted_text
 
-#     rtf_content = r"""{\rtf1\ansi\deff0
-# {\fonttbl{\f0\fnil\fcharset0 Courier New;}}
-# \viewkind4\uc1\pard\f0\fs24 %s \par
-# }""" % ansi_to_rtf( text )
+    rtf_content = r"""{\rtf1\ansi\deff0
+{\fonttbl{\f0\fnil\fcharset0 Courier New;}}
+\viewkind4\uc1\pard\f0\fs24 %s \par
+}""" % ansi_to_rtf( text )
 
-#     return rtf_content
+    return rtf_content
 
 # -------------------------------------------------------------------------
 # display
@@ -232,20 +237,24 @@ def display( what=None, title=None, level=0, error=False, exception=False ):
 
         elif isinstance( what, dict ):
 
-            console.print( Panel( Pretty(what), title=title, title_align='left' ) )
+            # console.print( Panel( Pretty(what), title=title, title_align='left' ) )
+            console.print( '\n', Panel( Text(title), style="green" ) )
+            console.print( Pretty(what) )
 
         elif isinstance( what, str ):
             if error:
-                console.print( Text( what, style="white on red" ), '\n')
+                console.print( Text( what, style="bright_white on red" ))
 
             elif level == 1:
-                console.print( Panel( Text(what.upper(), style="white"), style="white on cyan" ), '\n')
+                console.print( Panel( Text(what.upper()), style="black" ))
 
             elif level > 1:
-                console.print( Panel( Text(what), style="cyan" ), '\n')
+                console.print( '\n', Panel( Text(what), style="cyan" ), '\n')
 
             elif title:
-                console.print( Panel( Text(what), title=title ))
+                # console.print( Panel( Text(what), title=title ))
+                console.print( '\n', Panel( Text(title), style="cyan" ) )
+                console.print( what)
 
             else:
                 console.print( Text(what) )
@@ -292,20 +301,26 @@ def console_save( output ):
             }
     """
 
-    output_file = Path(output).resolve().with_suffix(".pdf")
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    output_file.unlink(missing_ok=True)
-
-    text = console.export_html()
-    text = text.replace( "<head>", print_options )
-
-    HTML(string=text ).write_pdf(str(output_file))
+    html = console.export_html()
 
     # output_file = Path(output).resolve().with_suffix(".html")
     # output_file.parent.mkdir(parents=True, exist_ok=True)
     # output_file.unlink(missing_ok=True)
 
-    # output_file.write_text( text )
+    # output_file.write_text( html )
+
+    output_file = Path(output).resolve().with_suffix(".pdf")
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.unlink(missing_ok=True)
+
+    html = html.replace( "<head>", print_options )
+
+    # soup=BeautifulSoup( html, "html.parser")
+    # html = " ".join(soup.prettify().split())
+
+    display( f"Starting to write {len(html)} bytes ...")
+    HTML(string=html ).write_pdf(str(output_file))
+    display( "... completed")
 
     console._record_buffer = []
 

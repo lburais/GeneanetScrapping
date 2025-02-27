@@ -61,7 +61,7 @@ class GBase():
         text = ""
         for event in events:
             if event[1] in data and data[event[1]]:
-                text = f"1 {event[0]}\n"
+                text = text + f"1 {event[0]}\n"
                 if f"{event[1]}date" in data and data[f"{event[1]}date"]:
                     text = text + f"2 DATE {data[f"{event[1]}date"]}\n"
                 if f"{event[1]}place" in data and data[f"{event[1]}place"]:
@@ -69,6 +69,30 @@ class GBase():
 
 
         return text
+
+    def _shorten_data( self, data, keys ):
+
+        data = { key: value for key, value in data.items() if not key in keys }
+
+        data = { key: value for key, value in data.items() if not value is None }
+
+        data = { key: value for key, value in data.items() if not ( isinstance( value, list) and len(value) == 0 ) }
+
+        return data
+
+
+    def _shorten_event( self, data, keys ):
+
+        for key in keys:
+            if key in data:
+
+                if data[key] is False:
+                    del data[key]
+
+                elif f"{key}date" in data or f"{key}place" in data:
+                    del data[key]
+
+        return data
 
 # --------------------------------------------------------------------------------------------------
 #
@@ -201,13 +225,9 @@ class GFamily(GBase):
         p = vars(self).copy()
 
         if short:
-            removed_keys = []
+            p = self._shorten_data( p.copy(), [] )
 
-            p = { key: value for key, value in p.items() if not key in removed_keys }
-
-            p = { key: value for key, value in p.items() if not value is None }
-            
-            p = { key: value for key, value in p.items() if not ( isinstance( value, list) and len(value) == 0 ) }
+            p = self._shorten_event( p.copy(), [ '_marriage', '_divorce'] )
 
         display( p, title=f"Family: {self._spousesref}" )
 
@@ -516,17 +536,16 @@ class GIndividual(GBase):
         p = vars(self).copy()
 
         if short:
-            removed_keys = ['_gedcom', '_parentsid', '_siblingsref', '_siblingsid', '_familyid', '_geneanet', '_families', '_familiesid']
+            p = self._shorten_data( p, ['_gedcom', '_parentsid', '_siblingsref', '_siblingsid', '_familyid', '_geneanet', '_families', '_familiesid'] )
 
-            p = { key: value for key, value in p.items() if not key in removed_keys }
+            p['_portrait'] = self._shorten_event( p['_portrait'].copy(), [ 'birth', 'death', 'baptem', 'burial'])
 
-            p = { key: value for key, value in p.items() if not value is None }
-            
-            p = { key: value for key, value in p.items() if not ( isinstance( value, list) and len(value) == 0 ) }
+            if 'notes' in p['_portrait']:
+                if len(p['_portrait']['notes']) > 0:
+                    p['_portrait']['notes'] = len(p['_portrait']['notes'])
+                else:
+                    del p['_portrait']['notes']
 
-            if '_notes' in p['_portrait']:
-                del p['_portrait']['_notes']
-        
         display( p, title=f"Individual: {self._ref}" )
 
 # --------------------------------------------------------------------------------------------------

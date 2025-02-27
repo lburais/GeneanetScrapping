@@ -102,27 +102,31 @@ def genealogy_scrapping( individuals, ascendants=False, descendants=False, spous
 
             # Process GEDCOM output
 
-            gedcom = root_folder / "gedcom" / f"{userid}.ged"
-            gedcom.parent.mkdir(parents=True, exist_ok=True)
-            gedcom.unlink(missing_ok=True)
+            gedcom_file = root_folder / "gedcom" / f"{userid}.ged"
+            gedcom_file.parent.mkdir(parents=True, exist_ok=True)
+            gedcom_file.unlink(missing_ok=True)
 
-            gedcom.write_text( genealogy.gedcom( force ) )
+            gedcom = genealogy.gedcom( force )
+
+            gedcom_file.write_text( gedcom )
 
             # Validate GEDCOM output
 
-            parser = pygedcom.GedcomParser( str(gedcom) )
+            parser = pygedcom.GedcomParser( str(gedcom_file) )
             parser.parse()
             check = parser.verify()
 
             display("")
             if check['status'] == 'ok':
-                display( parser.get_stats(), title=f"Your {str(gedcom)} file is valid" )
+                display( parser.get_stats(), title=f"Your {str(gedcom_file)} file is valid" )
             else:
-                display( check['message'], title=f"Your {str(gedcom)} file is not valid" )
+                display( check['message'], title=f"Your {str(gedcom_file)} file is not valid" )
 
             # Save Rich output
 
             display( "" )
+
+            display( gedcom, title="GEDCOM" )
 
             console_save( root_folder / "output" / f"{userid}" )
 
@@ -130,12 +134,12 @@ def genealogy_scrapping( individuals, ascendants=False, descendants=False, spous
 
             genealogy.print()
 
-            display( genealogy.gedcom(), title="GEDCOM" )
+            display( gedcom, title="GEDCOM" )
 
             if len(individuals) == 1:
                 display( genealogy.html(individuals[0]), title="HTML" )
 
-            console_save( root_folder / "output" / f"{userid}_tree" )
+            console_save( root_folder / "output" / f"{userid}_full" )
 
 ###################################################################################################################################
 # main

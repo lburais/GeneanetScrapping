@@ -294,7 +294,7 @@ class Geneanet:
             return [ output ]
         else:
             return []
-        return [ ]
+        return []
 
     # -------------------------------------------------------------------------
     # _scrap_medias
