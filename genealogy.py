@@ -23,9 +23,8 @@ Package to manage Individuals and Families
 #
 # -------------------------------------------------------------------------
 
-import re
 from datetime import datetime
-import urllib
+from urllib.parse import urlunparse, urlparse
 
 # -------------------------------------------------------------------------
 #
@@ -246,11 +245,12 @@ class GIndividual(GBase):
     # __init__
     # -------------------------------------------------------------------------
 
-    def __init__(self, url, force = False):
+    def __init__(self, source, url, force = False):
 
         display( "" )
         display( f"Individual: {url}", level=2 )
 
+        self._parser = source
         self._url = url
         self._ref = None
 
@@ -269,10 +269,9 @@ class GIndividual(GBase):
         self._families = []
         self._familiesid = []
 
-        if 'geneanet' in url:
+        try:
             # scrap geneanet page
-            self._geneanet = Geneanet()
-            individual = self._geneanet.scrap( url, force )
+            individual = self._parser.scrap( url, force )
 
             if 'ref' in individual:
                 self._ref = individual['ref']
@@ -289,8 +288,8 @@ class GIndividual(GBase):
             if 'families' in individual:
                 self._families = [ GFamily( family ) for family in individual['families'] ]
 
-        else:
-            display( f"Add processing for {url}", error=True )
+        except Exception as e:
+            display( f"{e}: Add processing for {url}", error=True )
 
         self.print(True)
 
@@ -458,8 +457,8 @@ class GIndividual(GBase):
         """
         Property to get the html of the individual
         """
-        if hasattr( self, '_geneanet'):
-            return self._geneanet.html
+        if hasattr( self, '_parser'):
+            return self._parser.html
         else:
             return ""
 
@@ -506,7 +505,7 @@ class GIndividual(GBase):
 
         # notes
 
-        if hasattr(self._portrait, "_notes"):
+        if 'notes' in self._portrait:
             for note in self._portrait['notes']:
                 note = note.splitlines()
                 if len(note) > 0:
@@ -536,7 +535,7 @@ class GIndividual(GBase):
         p = vars(self).copy()
 
         if short:
-            p = self._shorten_data( p, ['_gedcom', '_parentsid', '_siblingsref', '_siblingsid', '_familyid', '_geneanet', '_families', '_familiesid'] )
+            p = self._shorten_data( p, ['_gedcom', '_parentsid', '_siblingsref', '_siblingsid', '_familyid', '_parser', '_families', '_familiesid'] )
 
             p['_portrait'] = self._shorten_event( p['_portrait'].copy(), [ 'birth', 'death', 'baptem', 'burial'])
 
@@ -565,8 +564,13 @@ class Genealogy(GBase):
 
     def __init__(self, max_level, ascendants, spouses, descendants ):
 
-        self._parse = None
-        self._user = None
+        # self._parse = None
+
+        # self._user = None
+
+        self._parser = None
+
+        self._repositories = {}
 
         self._individuals = {}
         self._max_level = max_level
@@ -585,16 +589,36 @@ class Genealogy(GBase):
         Function to add one individual to the genealogy
         """
 
-        if urllib.parse.urlparse(url).scheme == "":
-            url = urllib.parse.urlunparse((self._parse.scheme, self._parse.netloc, self._parse.path, '', url, ''))
-        else:
-            self._parse = urllib.parse.urlparse(url)
-
-        self._user = re.sub( r'^/', '', self._parse.path )
+        parsed_url = urlparse(url)
+        repository = urlunparse((parsed_url.scheme, parsed_url.netloc, parsed_url.path, '', '', ''))
 
         ref = clean_query( url )
+
         if ref not in self._individuals:
-            self._individuals[ref] = GIndividual( url, force )
+
+            # Parser
+
+            if 'geneanet' in url:
+                if not isinstance( self._parser, Geneanet ):
+                    self._parser = Geneanet()
+            else:
+                self._parser = None
+
+            # Source
+
+            if repository not in self._repositories:
+
+                self._repositories[repository] = self._parser.informations( url )
+
+                if datetime.strptime( self._repositories[repository]['lastchange'], "%d %b %Y" ).date() > datetime.today().date():
+                    force = True
+
+            # Individual
+
+            self._individuals[ref] = GIndividual( self._parser, url, force )
+
+            # Families
+
             try:
                 new_families = self._individuals[ref].families
                 for family in new_families:
@@ -603,25 +627,30 @@ class Genealogy(GBase):
             except Exception as e:
                 display( f"Add individual: {type(e).__name__}", error=True )
 
+            # Ascendants descendants and childs
+
             if level < self._max_level:
 
                 if self._ascendants:
                     for parent in self._individuals[ref].parentsref:
+                        parent = urlunparse((parsed_url.scheme, parsed_url.netloc, parsed_url.path, '', parent, ''))
                         self.add_individual( parent, force, level+1 )
 
                 if self._spouses:
                     for spouse in self._individuals[ref].spousesref:
+                        spouse = urlunparse((parsed_url.scheme, parsed_url.netloc, parsed_url.path, '', spouse, ''))
                         self.add_individual( spouse, force, level+1 )
 
                 if self._descendants:
                     for child in self._individuals[ref].childsref:
+                        child = urlunparse((parsed_url.scheme, parsed_url.netloc, parsed_url.path, '', child, ''))
                         self.add_individual( child, force, level+1 )
 
     # -------------------------------------------------------------------------
     # gedcom
     # -------------------------------------------------------------------------
 
-    def gedcom( self, force = False ):
+    def gedcom( self ):
         """
         Function to get the GEDCOM of the genealogy
         """
@@ -638,12 +667,6 @@ class Genealogy(GBase):
 
         for family in self._families.values():
             family.setids( individuals_table, families_table )
-
-        # Author
-
-        if len(self._individuals) > 0:
-            geneanet = Geneanet()
-            informations = geneanet.informations( next(iter(self._individuals.values())).url, force )
 
         # HEADER
 
@@ -667,17 +690,20 @@ class Genealogy(GBase):
         gedcom = gedcom + "\n"
 
         # REPO
+        idx = 0
+        for url, informations in self._repositories.items():
 
-        if hasattr(self, '_parse') and 'informations' in locals():
-            gedcom = gedcom + "0 @R00000@ REPO\n"
+            gedcom = gedcom + f"0 @R{idx:05d}@ REPO\n"
             if 'author' in informations:
                 gedcom = gedcom + f"1 NAME {informations['author']}\n"
             if 'lastchange' in informations:
                 gedcom = gedcom + "1 CHAN\n"
                 gedcom = gedcom + f"2 DATE {informations['lastchange']}\n"
-            gedcom = gedcom + f"1 WWW {urllib.parse.urlunparse((self._parse.scheme, self._parse.netloc, self._parse.path, '', '', ''))}\n"
-            gedcom = gedcom + "1 REPO_TYPE Geneanet\n"
+            gedcom = gedcom + f"1 WWW {url}\n"
+            gedcom = gedcom + f"1 TYPE {informations['source']}\n"
             gedcom = gedcom + "\n"
+
+            idx = idx + 1
 
         # INDI with SOUR and NOTE
 

@@ -29,11 +29,6 @@ import sys
 import base64
 from pathlib import Path
 
-# https://pypi.org/project/beautifulsoup4/
-# pip3 install bs4
-
-from bs4 import BeautifulSoup
-
 # https://pypi.org/project/babel/
 # pip3 install babel
 import babel
@@ -243,7 +238,7 @@ def display( what=None, title=None, level=0, error=False, exception=False ):
 
         elif isinstance( what, str ):
             if error:
-                console.print( Text( what, style="bright_white on red" ))
+                console.print( Text( f"[ERROR] {what}", style="bright_white on red" ))
 
             elif level == 1:
                 console.print( Panel( Text(what.upper()), style="black" ))
@@ -303,22 +298,13 @@ def console_save( output ):
 
     html = console.export_html()
 
-    # output_file = Path(output).resolve().with_suffix(".html")
-    # output_file.parent.mkdir(parents=True, exist_ok=True)
-    # output_file.unlink(missing_ok=True)
-
-    # output_file.write_text( html )
-
     output_file = Path(output).resolve().with_suffix(".pdf")
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.unlink(missing_ok=True)
 
     html = html.replace( "<head>", print_options )
 
-    # soup=BeautifulSoup( html, "html.parser")
-    # html = " ".join(soup.prettify().split())
-
-    display( f"Starting to write {len(html)} bytes ...")
+    display( f"Starting to write {len(html)} bytes to {str(output_file)} at {datetime.now().strftime("%H:%M:%S")}...")
     HTML(string=html ).write_pdf(str(output_file))
     display( "... completed")
 

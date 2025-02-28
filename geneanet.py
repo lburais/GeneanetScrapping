@@ -92,8 +92,8 @@ class Geneanet:
 
             try: # place
 
-                if date:
-                    place = event.group('place').strip()
+                # if date:
+                place = event.group('place').strip()
 
             except AttributeError:
                 pass
@@ -648,7 +648,7 @@ class Geneanet:
     # informations
     # -------------------------------------------------------------------------
 
-    def informations( self, url, force = False ):
+    def informations( self, url, force = True ):
         """
         Function to get informations about the Geneanet owner
         """
@@ -668,6 +668,7 @@ class Geneanet:
                 informations['persons'] = int(re.sub(r'\D', '', perso.select( "span[class*='stats-number']" )[0].get_text()))
                 informations['lastchange'] = [ p for p in perso.select( "p[class*='text-light']" ) if 'Dernière' in p.get_text() ][0]
                 informations['lastchange'] = convert_date( informations['lastchange'].find("span").get_text().split( '/' ) )
+                informations['source'] = "Geneanet"
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()

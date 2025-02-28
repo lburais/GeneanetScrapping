@@ -97,16 +97,15 @@ def genealogy_scrapping( individuals, ascendants=False, descendants=False, spous
 
         process.terminate()
 
-
         if userid:
 
             # Process GEDCOM output
 
-            gedcom_file = root_folder / "gedcom" / f"{userid}.ged"
+            gedcom_file = root_folder / f"{userid}" / f"{userid}.ged"
             gedcom_file.parent.mkdir(parents=True, exist_ok=True)
             gedcom_file.unlink(missing_ok=True)
 
-            gedcom = genealogy.gedcom( force )
+            gedcom = genealogy.gedcom()
 
             gedcom_file.write_text( gedcom )
 
@@ -128,7 +127,7 @@ def genealogy_scrapping( individuals, ascendants=False, descendants=False, spous
 
             display( gedcom, title="GEDCOM" )
 
-            console_save( root_folder / "output" / f"{userid}" )
+            console_save( root_folder / f"{userid}" / "logs" )
 
             # Save outcome
 
@@ -139,7 +138,7 @@ def genealogy_scrapping( individuals, ascendants=False, descendants=False, spous
             if len(individuals) == 1:
                 display( genealogy.html(individuals[0]), title="HTML" )
 
-            console_save( root_folder / "output" / f"{userid}_full" )
+            console_save( root_folder / f"{userid}" / "genealogy" )
 
 ###################################################################################################################################
 # main
@@ -186,10 +185,10 @@ def main():
             'https://gw.geneanet.org/zeking?iz=2&p=6+2+leonard&n=stefani',              # zeking - Léonard Stéphani
             'https://gw.geneanet.org/sanso2b?p=romain+jean+michel&n=burais',            # sanso2b - Romain Jean Michel Burais
             'https://gw.geneanet.org/zlc061?p=marie+rose&n=cler&oc=1',                  # zlc061 - Marie Rose Cler
-            'https://gw.geneanet.org/comrade28?iz=0&p=nicholas&n=de+bacqueville',       # comrade28 - Nicholas de Bacqueville
             'https://gw.geneanet.org/12marcel?p=marie+rose&n=cler',                     # 12marcel - Marie Rose Cler
             'https://gw.geneanet.org/pierreb0142?p=desire+antonin&n=bessey',            # pierre0142 - Désiré Antonin Bessey
-            'https://gw.geneanet.org/lburais_w?p=milo&n=x&oc=1125',                       # lburais - Milo
+            'https://gw.geneanet.org/comrade28?iz=0&p=nicholas&n=de+bacqueville',       # comrade28 - Nicholas de Bacqueville
+            # 'https://gw.geneanet.org/lburais_w?p=milo&n=x&oc=1125',                     # lburais - Milo
             # 'https://gw.geneanet.org/alandur',                                        # alandur
             # 'https://gw.geneanet.org/domale',                                         # domale
             # 'https://gw.geneanet.org/malugi',                                         # malugi

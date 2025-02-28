@@ -29,7 +29,7 @@
             "request": "launch",
             "program": "genealogy_scrapper.py",
             "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/12marcel?p=marie+rose&n=cler' -l 1 -a -s"
+            "args": "'https://gw.geneanet.org/pierreb0142?p=jean+marie&n=bessey&oc=4' -l 1 -a -s"
         },
         {
             "name": "3 gen",
