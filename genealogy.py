@@ -25,6 +25,7 @@ Package to manage Individuals and Families
 
 from datetime import datetime
 from urllib.parse import urlunparse, urlparse
+import textwrap
 
 # -------------------------------------------------------------------------
 #
@@ -508,11 +509,22 @@ class GIndividual(GBase):
         if 'notes' in self._portrait:
             for note in self._portrait['notes']:
                 note = note.splitlines()
+                first = True
                 if len(note) > 0:
-                    text = text + f"1 NOTE {note[0]}\n"
-                    note.pop(0)
                     for line in note:
-                        text = text + f"2 CONT {line}\n"
+                        wrapped_line = textwrap.wrap( line, width=200 )
+
+                        if first:
+                            text = text + f"1 NOTE {wrapped_line[0]}\n"
+                        else:
+                            text = text + f"2 CONT {wrapped_line[0]}\n"
+
+                        wrapped_line.pop(0)
+
+                        for sub_line in wrapped_line:
+                            text = text + f"{"2" if first else "3"} CONC {sub_line}\n"
+
+                        first = False
 
         if hasattr(self, "_url") and not self._url is None:
             text = text + f"1 SOUR {self._url}\n"
