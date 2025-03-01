@@ -33,7 +33,7 @@ jobs:
 
     - name: Run Genealogy Scrapper
       run: |
-        python genealogy_scrapper.py -l 100 -a -s
+        python genealogy_scrapper.py -h
 
     - name: Lint with flake8
       run: |

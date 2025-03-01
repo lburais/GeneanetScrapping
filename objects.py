@@ -13,13 +13,13 @@
 # GNU General Public License for more details.
 #
 
-# pylint: disable=C0112,C0116
-
-from common import display
-
 """
 Package with genealogy objects
 """
+
+# pylint: disable=C0112,C0116
+
+from common import display
 
 class _object(dict):
 
@@ -84,25 +84,40 @@ class Place(_object):
 
 # --------------------------------------------------------------------------------------------------
 #
-# Portrait class
+# Data class
 #
 # --------------------------------------------------------------------------------------------------
 
-class Portrait(_object):
+class Data(_object):
     """
     Object 
     """
 
-    def __init__(self, *args, **kwargs):
-        defaults = {
-            'firstname': None,
-            'lastname': None,
-            'sex': None,
-            'occupation': None,
-            'notes': [],
-        }
+    def __init__(self, family, *args, **kwargs):
+        if family:
+            defaults = {
+                'gedcomid': None,
+                'spousesid': [],
+                'childsid': []
+            }
+            events = ['marriage', 'divorce']
 
-        events = ['birth', 'death', 'baptesm', 'burial']
+        else:
+            defaults = {
+                'gedcomid': None,
+                'url': None,
+                'firstname': None,
+                'lastname': None,
+                'sex': None,
+                'occupation': None,
+                'notes': [],
+                'familyid': None,
+                'parentsid': [],
+                'siblingsid': [],
+                'familiesid': []
+            }
+            events = ['birth', 'death', 'baptem', 'burial']
+
         for event in events:
             defaults[ f"{event}" ] = defaults[ f"{event}date" ] = defaults[ f"{event}place" ] = None
 
@@ -121,16 +136,12 @@ class Individual(_object):
 
     def __init__(self, *args, **kwargs):
         defaults = {
-            'gedcomid': None,
             'ref': None,
-            'portrait': Portrait(),
-            'familyid': None,
+            'data': Data( family=False ),
             'parentsref': [],
-            'parentsid': [],
             'siblingsref': [],
-            'siblingsid': [],
+            'familiesref': [],
             'families': [],
-            'familiesid': []
         }
 
         super().__init__( defaults, *args, **kwargs)
@@ -148,15 +159,9 @@ class Family(_object):
 
     def __init__(self, *args, **kwargs):
         defaults = {
-            'gedcomid': None,
             'spousesref': [],
-            'spousesid': [],
+            'data': Data( family=True ),
             'childsref': [],
-            'childsid': []
         }
-
-        events = ['marriage', 'divorce']
-        for event in events:
-            defaults[ f"{event}" ] = defaults[ f"{event}date" ] = defaults[ f"{event}place" ] = None
 
         super().__init__( defaults, *args, **kwargs)
