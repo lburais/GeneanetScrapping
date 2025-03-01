@@ -276,7 +276,7 @@ class GIndividual(GBase):
 
         self._individual.data.gedcomid = None
         try:
-            self._individual.data.gedcomid = individuals_table[self._individual.data.ref]
+            self._individual.data.gedcomid = individuals_table[self._individual.ref]
         except KeyError:
             pass
         except Exception as e:
