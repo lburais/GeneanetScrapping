@@ -21,14 +21,21 @@ Package with genealogy objects
 
 from common import display
 
+# --------------------------------------------------------------------------------------------------
+#
+# _object class
+#
+# --------------------------------------------------------------------------------------------------
+
+
 class _object(dict):
 
     def __init__(self, defaults, *args, **kwargs):
-        super().__init__( defaults, *args, **kwargs)
+        super().__init__(defaults, *args, **kwargs)
 
     def __setitem__(self, key, value):
-        if not key in self.keys():
-            display( f"Object new key [{key}] with value [{value}]", error=True)
+        if key not in self.keys():
+            display(f"Object new key [{key}] with value [{value}]", error=True)
         super().__setitem__(key, value)
 
     def __setattr__(self, key, value):
@@ -46,9 +53,10 @@ class _object(dict):
 #
 # --------------------------------------------------------------------------------------------------
 
+
 class Informations(_object):
     """
-    Object 
+    Informations
     """
 
     def __init__(self, *args, **kwargs):
@@ -60,7 +68,7 @@ class Informations(_object):
             'source': None
         }
 
-        super().__init__( defaults, *args, **kwargs)
+        super().__init__(defaults, *args, **kwargs)
 
 # --------------------------------------------------------------------------------------------------
 #
@@ -68,9 +76,10 @@ class Informations(_object):
 #
 # --------------------------------------------------------------------------------------------------
 
+
 class Place(_object):
     """
-    Object 
+    Place
     """
 
     def __init__(self, *args, **kwargs):
@@ -80,7 +89,7 @@ class Place(_object):
             'longitude': None,
         }
 
-        super().__init__( defaults, *args, **kwargs)
+        super().__init__(defaults, *args, **kwargs)
 
 # --------------------------------------------------------------------------------------------------
 #
@@ -88,9 +97,10 @@ class Place(_object):
 #
 # --------------------------------------------------------------------------------------------------
 
+
 class Data(_object):
     """
-    Object 
+    Data
     """
 
     def __init__(self, family, *args, **kwargs):
@@ -119,9 +129,9 @@ class Data(_object):
             events = ['birth', 'death', 'baptem', 'burial']
 
         for event in events:
-            defaults[ f"{event}" ] = defaults[ f"{event}date" ] = defaults[ f"{event}place" ] = None
+            defaults[f"{event}"] = defaults[f"{event}date"] = defaults[f"{event}place"] = None
 
-        super().__init__( defaults, *args, **kwargs)
+        super().__init__(defaults, *args, **kwargs)
 
 # --------------------------------------------------------------------------------------------------
 #
@@ -129,22 +139,23 @@ class Data(_object):
 #
 # --------------------------------------------------------------------------------------------------
 
+
 class Individual(_object):
     """
-    Object 
+    Individual
     """
 
     def __init__(self, *args, **kwargs):
         defaults = {
             'ref': None,
-            'data': Data( family=False ),
+            'data': Data(family=False),
             'parentsref': [],
             'siblingsref': [],
             'familiesref': [],
             'families': [],
         }
 
-        super().__init__( defaults, *args, **kwargs)
+        super().__init__(defaults, *args, **kwargs)
 
 # --------------------------------------------------------------------------------------------------
 #
@@ -152,16 +163,17 @@ class Individual(_object):
 #
 # --------------------------------------------------------------------------------------------------
 
+
 class Family(_object):
     """
-    Object 
+    Family
     """
 
     def __init__(self, *args, **kwargs):
         defaults = {
             'spousesref': [],
-            'data': Data( family=True ),
+            'data': Data(family=True),
             'childsref': [],
         }
 
-        super().__init__( defaults, *args, **kwargs)
+        super().__init__(defaults, *args, **kwargs)

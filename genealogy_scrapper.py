@@ -47,7 +47,8 @@ from genealogy import Genealogy
 #
 # -------------------------------------------------------------------------
 
-def genealogy_scrapping( individuals, ascendants=False, descendants=False, spouses=False, max_levels= 0, force=False, one=False):
+
+def genealogy_scrapping(individuals, ascendants=False, descendants=False, spouses=False, max_levels=0, force=False, one=False):
     """
     Main function to start processing of genealogy
     """
@@ -65,17 +66,17 @@ def genealogy_scrapping( individuals, ascendants=False, descendants=False, spous
         if one:
             userid = None
 
-            if  individual is individuals[0]:
+            if individual is individuals[0]:
                 # first of all
-                genealogy = Genealogy( max_levels, ascendants, spouses, descendants )
+                genealogy = Genealogy(max_levels, ascendants, spouses, descendants)
 
             elif individual is individuals[-1]:
                 # last of all
                 userid = 'geneanet'
         else:
             # each
-            userid = re.sub( r'^/', '', urllib.parse.urlparse(individual).path )
-            genealogy = Genealogy( max_levels, ascendants, spouses, descendants )
+            userid = re.sub(r'^/', '', urllib.parse.urlparse(individual).path)
+            genealogy = Genealogy(max_levels, ascendants, spouses, descendants)
 
         # disable screenlock
 
@@ -86,12 +87,12 @@ def genealogy_scrapping( individuals, ascendants=False, descendants=False, spous
         try:
 
             if genealogy:
-                genealogy.add_individual( individual, force )
+                genealogy.add_individual(individual, force)
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             message = f'{e} with scrapping [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
-            display( message, error=True )
+            display(message, error=True)
 
         # enable screenlock
 
@@ -107,49 +108,50 @@ def genealogy_scrapping( individuals, ascendants=False, descendants=False, spous
 
             gedcom = genealogy.gedcom()
 
-            gedcom_file.write_text( gedcom )
+            gedcom_file.write_text(gedcom)
 
             # Validate GEDCOM output
 
-            parser = pygedcom.GedcomParser( str(gedcom_file) )
+            parser = pygedcom.GedcomParser(str(gedcom_file))
             parser.parse()
             check = parser.verify()
 
             display("")
             if check['status'] == 'ok':
-                display( parser.get_stats(), title=f"Your {str(gedcom_file)} file is valid" )
+                display(parser.get_stats(), title=f"Your {str(gedcom_file)} file is valid")
             else:
-                display( check['message'], title=f"Your {str(gedcom_file)} file is not valid" )
+                display(check['message'], title=f"Your {str(gedcom_file)} file is not valid")
 
             # Save Rich output
 
-            display( "" )
+            display("")
 
-            display( gedcom, title="GEDCOM" )
+            display(gedcom, title="GEDCOM")
 
-            console_save( root_folder / f"{userid}" / "logs" )
+            console_save(root_folder / f"{userid}" / "logs")
 
             # Save outcome
 
             genealogy.print()
 
-            display( gedcom, title="GEDCOM" )
+            display(gedcom, title="GEDCOM")
 
             if len(individuals) == 1:
-                display( genealogy.html(individuals[0]), title="HTML" )
+                display(genealogy.html(individuals[0]), title="HTML")
 
-            console_save( root_folder / f"{userid}" / "genealogy" )
+            console_save(root_folder / f"{userid}" / "genealogy")
 
 ###################################################################################################################################
 # main
 ###################################################################################################################################
+
 
 def main():
     """
     Main function to go by command line arguments and default setup
     """
 
-    display( "Genealogy Scrapper", level=1 )
+    display("Genealogy Scrapper", level=1)
 
     # Process parameters
 
@@ -195,20 +197,25 @@ def main():
         ]
 
     else:
-        searchedindividuals = [ args.searchedindividual ]
+        searchedindividuals = [args.searchedindividual]
 
     params = {
-        'one' : one,
-        'force' : force,
-        'ascendants' : ascendants,
-        'descendants' : descendants,
-        'spouses' : spouses,
-        'max_levels' : max_levels,
-        'searchedindividuals' : searchedindividuals
+        'one': one,
+        'force': force,
+        'ascendants': ascendants,
+        'descendants': descendants,
+        'spouses': spouses,
+        'max_levels': max_levels,
+        'searchedindividuals': searchedindividuals
     }
-    display( params, title="Parameters")
+    display(params, title="Parameters")
 
-    genealogy_scrapping( searchedindividuals, ascendants, descendants, spouses, max_levels, force, one )
+    genealogy_scrapping(searchedindividuals, ascendants, descendants, spouses, max_levels, force, one)
+
+###################################################################################################################################
+# __main__
+###################################################################################################################################
+
 
 if __name__ == '__main__':
     main()
