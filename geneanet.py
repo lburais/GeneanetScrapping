@@ -28,11 +28,28 @@ from collections import namedtuple
 import sys
 import os
 import urllib
+import base64
 
 # https://pypi.org/project/beautifulsoup4/
 # pip3 install bs4
 
 from bs4 import BeautifulSoup, Comment
+
+# https://pypi.org/project/babel/
+# pip3 install babel
+import babel
+import babel.dates
+
+# https://pypi.org/project/selenium/
+# pip3 install selenium
+
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.common.exceptions import TimeoutException
 
 #-------------------------------------------------------------------------
 #
@@ -40,7 +57,8 @@ from bs4 import BeautifulSoup, Comment
 #
 #-------------------------------------------------------------------------
 
-from common import display, get_folder, convert_date, clean_query, load_chrome
+from common import display, get_folder, clean_query
+from objects import Informations, Place, Portrait, Individual, Family
 
 #-------------------------------------------------------------------------
 #
@@ -59,57 +77,6 @@ class Geneanet:
     def __init__(self):
         self._folder = get_folder()
         self._html = None
-
-    # -------------------------------------------------------------------------
-    # _extract_date_place
-    # -------------------------------------------------------------------------
-
-    def _extract_date_place( self, content, key, pattern ):
-
-        try:
-            date = place = None
-            exist = True
-
-            event = re.search( pattern, content )
-
-            display( f"{key.upper()} {content} [{event.group('date')}] [{event.group('alt')}] [{event.group('place')}]" )
-
-            try: # first date
-
-                date = convert_date(event.group('date').strip().split())
-
-            except (IndexError, ValueError):
-                try: # second date
-
-                    date = convert_date(event.group('alt').strip().split())
-
-                except (IndexError, ValueError, AttributeError):
-                    pass
-                except Exception as e:
-                    display( f"{key.upper()} - date 2: {type(e).__name__}", error=True )
-            except Exception as e:
-                display( f"{key.upper()} - date 1: {type(e).__name__}", error=True )
-
-            try: # place
-
-                # if date:
-                place = event.group('place').strip()
-
-            except AttributeError:
-                pass
-            except Exception as e:
-                display( f"{key.upper()} - place: {type(e).__name__}", error=True )
-
-
-            if event and not date and not place:
-                display( f"{key.upper()}: [{content}]", error=True )
-
-        except (AttributeError, NameError):
-            exist = False
-        except Exception as e:
-            display( f"{key.upper()}: {type(e).__name__}", error=True )
-
-        return exist, date, place
 
     # -------------------------------------------------------------------------
     # _load
@@ -142,7 +109,82 @@ class Geneanet:
 
                 display( f'Load from {url}' )
 
-                self._html = load_chrome( url, output_folder / (output_file + ".pdf") )
+                output_pdf = output_folder / (output_file + ".pdf")
+
+                self._html = None
+                headless = urllib.parse.urlparse(url).scheme == 'file'
+
+                try:
+                    # Chrome setup
+
+                    chrome_options = webdriver.ChromeOptions()
+                    if headless:
+                        chrome_options.add_argument("--headless")  # Headless mode to avoid opening a browser window
+                    chrome_options.add_argument("--kiosk-printing")  # Enables silent printing
+                    chrome_options.add_argument("--disable-gpu")  # Disables GPU acceleration (helpful in some cases)
+
+                    # Configure Chrome print settings to save as PDF
+                    output_pdf.parent.mkdir(parents=True, exist_ok=True)
+                    output_pdf.unlink(missing_ok=True)
+
+                    chrome_options.add_experimental_option("prefs", {
+                        "printing.print_preview_sticky_settings.appState": '{"recentDestinations":[{"id":"Save as PDF","origin":"local"}],"selectedDestinationId":"Save as PDF","version":2}',
+                        "savefile.default_directory": str(output_pdf)
+                    })
+
+                    service = Service()  # No need to specify path if using Selenium 4.6+
+                    browser = webdriver.Chrome(service=service, options=chrome_options)
+
+                    # let's go browse
+
+                    browser.get(url)
+
+                    if not headless:
+
+                        # wait for button click
+
+                        try:
+                            consent_button = WebDriverWait(browser, 20).until(
+                                EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
+                            )
+                            ActionChains(browser).move_to_element(consent_button).click().perform()
+                        except TimeoutException:
+                            pass
+                        except Exception as e:
+                            display( f"Clickable: {type(e).__name__}", error=True )
+
+                    # Process PDF
+                    try:
+                        # Use Chrome DevTools Protocol (CDP) to print as PDF
+                        pdf_settings = {
+                            "landscape": False,
+                            "paperWidth": 8.5,
+                            "paperHeight": 11,
+                            "displayHeaderFooter": True,
+                            "printBackground": False
+                        }
+
+                        # Execute CDP command to save as PDF
+                        pdf_data = browser.execute_cdp_cmd("Page.printToPDF", pdf_settings)
+
+                        # Save PDF to file
+                        output_pdf.write_bytes(base64.b64decode(pdf_data["data"]))
+                    except Exception as e:
+                        display( f"Save PDF: {type(e).__name__}", error=True )
+                        display( f'Failed to save PDF: {output_pdf}', error=True )
+
+                    # Get HTML
+
+                    self._html = browser.page_source
+
+                except Exception as e:
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    message = f'Exception {e} [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
+                    display( message, error=True )
+                    display( message, exception=True )
+
+                if browser:
+                    browser.quit()
 
                 # Get content in perso bloc
 
@@ -224,11 +266,167 @@ class Geneanet:
         return contents
 
     # -------------------------------------------------------------------------
+    # _place
+    # -------------------------------------------------------------------------
+
+    def _place( self, place ):
+        """
+        Function to get a place from GeoNames
+        """
+
+        return place
+
+    # -------------------------------------------------------------------------
+    # _extract_date_place
+    # -------------------------------------------------------------------------
+
+    def _extract_date_place( self, content, key, pattern ):
+
+        try:
+            date = place = None
+            exist = True
+
+            event = re.search( pattern, content )
+
+            display( f"{key.upper()} {content} [{event.group('date')}] [{event.group('alt')}] [{event.group('place')}]" )
+
+            try: # first date
+
+                date = self._convert_date(event.group('date').strip().split())
+
+            except (IndexError, ValueError):
+                try: # second date
+
+                    date = self._convert_date(event.group('alt').strip().split())
+
+                except (IndexError, ValueError, AttributeError):
+                    pass
+                except Exception as e:
+                    display( f"{key.upper()} - date 2: {type(e).__name__}", error=True )
+            except Exception as e:
+                display( f"{key.upper()} - date 1: {type(e).__name__}", error=True )
+
+            try: # place
+
+                # if date:
+                place = event.group('place').strip()
+
+            except AttributeError:
+                pass
+            except Exception as e:
+                display( f"{key.upper()} - place: {type(e).__name__}", error=True )
+
+
+            if event and not date and not place:
+                display( f"{key.upper()}: [{content}]", error=True )
+
+        except (AttributeError, NameError):
+            exist = False
+        except Exception as e:
+            display( f"{key.upper()}: {type(e).__name__}", error=True )
+
+        return exist, date, place
+
+    # -------------------------------------------------------------------------
+    # _convert_date
+    # -------------------------------------------------------------------------
+
+    def _convert_date( self, datetab ):
+        """
+        Function to convert a french date to GEDCOM date
+        """
+
+        convert = {
+            'ca': 'ABT',
+            'vers': 'ABT',
+            'à propos': 'ABT',
+            'estimé': 'EST',
+            'après': 'AFT',
+            'avant': 'BEF',
+            'entre': 'BET',
+            'et': 'AND'
+        }
+
+        try:
+            if len(datetab) == 0:
+                return None
+
+            idx = 0
+
+            # clean
+            datetab = [ v.strip() for v in datetab ]
+
+            # Assuming there is just a year and last element is the year
+
+            if len(datetab) == 1 or datetab[0] == 'en':
+                # avoid a potential month
+                if datetab[-1].isalpha():
+                    return datetab[-1][0:4]
+
+                # avoid a potential , after the year
+                elif datetab[-1].isnumeric():
+                    return datetab[-1][0:4]
+
+            # Between date
+
+            if datetab[0] == 'entre':
+                try:
+                    index = datetab.index("et")
+                    return convert[datetab[0]] + " " + self._convert_date(datetab[1:index]) + " " + convert[datetab[index]] + " " + self._convert_date(datetab[index+1:])
+                except ValueError:
+                    pass
+
+            # Having prefix
+
+            if datetab[0] in convert:
+                return convert[datetab[0]] + " " + self._convert_date(datetab[1:])
+
+            # Skip 'le' prefix
+
+            if datetab[0] == 'le':
+                idx = 1
+
+            # In case of french language remove the 'er' prefix
+
+            if datetab[idx] == "1er":
+                datetab[idx] = "1"
+
+            months = dict(babel.dates.get_month_names(width='wide', locale='fr'))
+
+            # Just month and year
+            if datetab[idx].lower() in months.values():
+                bd1 = "1" + " " + str(list(months.keys())[list(months.values()).index(datetab[idx])]) + " " + datetab[idx+1][0:4]
+                bd2 = babel.dates.parse_date(bd1, locale='fr')
+                return bd2.strftime("%b %Y").upper()
+
+            try:
+                # day month year
+                bd1 = datetab[idx] + " " + str(list(months.keys())[list(months.values()).index(datetab[idx+1])]) + " " + datetab[idx+2][0:4]
+                bd2 = babel.dates.parse_date(bd1, locale='fr')
+            except ValueError:
+                # day monthnum year
+                bd1 = datetab[idx] + " " + datetab[idx+1] + " " + datetab[idx+2][0:4]
+                bd2 = babel.dates.parse_date(bd1, locale='fr')
+            except Exception as e:
+                display( f"Convert date: {type(e).__name__}", error=True )
+
+            return bd2.strftime("%d %b %Y").upper()
+
+        except Exception as e:
+            display( f"Date error ({type(e).__name__}): {' '.join(datetab)}", error=True )
+            raise ValueError from e
+
+    # -------------------------------------------------------------------------
     # _scrap_notes
     # -------------------------------------------------------------------------
     def _scrap_notes( self, html ):
 
         output = ''
+
+        # stop at Photos & Documents section
+        idx = html.find( "Photos" )
+        html = html[:idx] if idx != -1 else html
+
         soup = BeautifulSoup(html, 'html.parser')
 
         try: # H2
@@ -345,7 +543,7 @@ class Geneanet:
         try:
             marriage = ' '.join( soup.find("em").get_text().split() ).rstrip(",")
             pattern = r"(?:Mariée?)?(?P<date>[^,]*)\s*(?:\((?P<alt>.*)\))?\s*(?:,\s*(?P<place>.*?))?(?=, à|$)"
-            family['marriage'], family['marriagedate'], family['marriageplace'] = self._extract_date_place( marriage, "Marié", pattern)
+            family['marriage'], family['marriagedate'], family['marriageplace'] = self._convert_date_place( marriage, "Marié", pattern)
         except AttributeError:
             pass
         except Exception as e:
@@ -366,7 +564,7 @@ class Geneanet:
         try:
             divorce = soup.get_text().lower()
             pattern = r"(?:.*)divorcéée?\s*(?P<date>[^-(à]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
-            family['divorce'], family['divorcedate'], noplace = self._extract_date_place( divorce, "Divorcé", pattern)
+            family['divorce'], family['divorcedate'], noplace = self._convert_date_place( divorce, "Divorcé", pattern)
         except AttributeError:
             pass
         except Exception as e:
@@ -424,7 +622,7 @@ class Geneanet:
         Function to scrap a geneanet page
         """
 
-        person = {}
+        person = Individual()
 
         try:
             # Reference
@@ -441,7 +639,7 @@ class Geneanet:
                 # -------------------------------------------------------------
                 if 'portrait' in section.name.lower():
 
-                    person['portrait'] = {}
+                    person['portrait'] = Portrait()
 
                     # first and last names
                     try:
@@ -461,17 +659,18 @@ class Geneanet:
                         person['portrait']['sex'] = sex[0]['alt']
                         if person['portrait']['sex'] == 'H':
                             person['portrait']['sex'] = 'M'
+                        if person['portrait']['sex'] != 'M' and person['portrait']['sex'] != 'F':
+                            person['portrait']['sex'] = 'U'
                     except AttributeError:
                         pass
                     except Exception as e:
                         display( f"Sex: {type(e).__name__}", error=True )
-                        person['portrait']['sex'] = 'U'
 
                     # birth
                     try:
-                        pattern = r"(?:.*)Née?\s*(?P<date>[^-(à]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
+                        pattern = r"Née?\s*(?P<date>[^-(à]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
                         event = ' '.join( section.content.find('li', string=lambda text: "Né" in text if text else False).get_text().split() )
-                        person['portrait']['birth'], person['portrait']['birthdate'], person['portrait']['birthplace'] = self._extract_date_place( event, "Né", pattern)
+                        person['portrait']['birth'], person['portrait']['birthdate'], person['portrait']['birthplace'] = self._convert_date_place( event, "Né", pattern)
                     except AttributeError:
                         pass
                     except Exception as e:
@@ -479,9 +678,9 @@ class Geneanet:
 
                     # death
                     try:
-                        pattern = r"(?:.*)Décédée?\s*(?P<date>[^-(à]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
+                        pattern = r"Décédée?\s*(?P<date>[^-(à]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
                         event = ' '.join( section.content.find('li', string=lambda text: "Décédé" in text if text else False).get_text().split() )
-                        person['portrait']['death'], person['portrait']['deathdate'], person['portrait']['deathplace'] = self._extract_date_place( event, "Décédé", pattern)
+                        person['portrait']['death'], person['portrait']['deathdate'], person['portrait']['deathplace'] = self._convert_date_place( event, "Décédé", pattern)
                     except AttributeError:
                         pass
                     except Exception as e:
@@ -493,7 +692,7 @@ class Geneanet:
                         display("Processing baptem ")
 
                         try:
-                            person['portrait']['baptemdate'] = convert_date(baptem.split('-')[0].split()[1:])
+                            person['portrait']['baptemdate'] = self._convert_date(baptem.split('-')[0].split()[1:])
 
                             try:
                                 person['portrait']['baptemplace'] = baptem[baptem.find('-') + 1:].strip()
@@ -515,7 +714,7 @@ class Geneanet:
                     try:
                         pattern = r"(?:.*)Inhumée?\s*(?P<date>[^-(à,]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
                         event = ' '.join( section.content.find('li', string=lambda text: "inhumé" in text.lower() if text else False).get_text().split() )
-                        person['portrait']['burial'], person['portrait']['burialdate'], person['portrait']['burialplace'] = self._extract_date_place( event, "Inhumé", pattern)
+                        person['portrait']['burial'], person['portrait']['burialdate'], person['portrait']['burialplace'] = self._convert_date_place( event, "Inhumé", pattern)
                     except (AttributeError, IndexError):
                         pass
                     except Exception as e:
@@ -653,29 +852,31 @@ class Geneanet:
         Function to get informations about the Geneanet owner
         """
 
-        informations = {}
+        infos = Informations()
 
         try:
             parsed_url = urllib.parse.urlparse(url)
 
             if parsed_url.scheme != "":
 
-                informations['url'] = urllib.parse.urlunparse((parsed_url.scheme, parsed_url.netloc, parsed_url.path, '', '', ''))
+                infos.url = urllib.parse.urlunparse((parsed_url.scheme, parsed_url.netloc, parsed_url.path, '', '', ''))
 
-                perso = self._load( informations['url'], force )
+                perso = self._load( infos.url, force )
 
-                informations['author'] = perso.select( "div[class*='info-auteur']" )[0].find("strong").get_text().strip()
-                informations['persons'] = int(re.sub(r'\D', '', perso.select( "span[class*='stats-number']" )[0].get_text()))
-                informations['lastchange'] = [ p for p in perso.select( "p[class*='text-light']" ) if 'Dernière' in p.get_text() ][0]
-                informations['lastchange'] = convert_date( informations['lastchange'].find("span").get_text().split( '/' ) )
-                informations['source'] = "Geneanet"
+                infos.author = perso.select( "div[class*='info-auteur']" )[0].find("strong").get_text().strip()
+                infos.nbindividuals = int(re.sub(r'\D', '', perso.select( "span[class*='stats-number']" )[0].get_text()))
+                infos.lastchange = [ p for p in perso.select( "p[class*='text-light']" ) if 'Dernière' in p.get_text() ][0]
+                infos.lastchange = self._convert_date( infos.lastchange.find("span").get_text().split( '/' ) )
+                infos.source = "Geneanet"
+
+                display( infos, title = "Informations" )
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             message = f'{e} within scrapping [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
             display( message, error=True )
 
-        return informations
+        return infos
 
     # -------------------------------------------------------------------------
     # html

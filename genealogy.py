@@ -33,8 +33,10 @@ import textwrap
 #
 # -------------------------------------------------------------------------
 
-from common import display, clean_query, convert_date
+from common import display, clean_query
 from geneanet import Geneanet
+
+from objects import Informations, Place, Portrait, Individual, Family
 
 # --------------------------------------------------------------------------------------------------
 #
@@ -48,9 +50,7 @@ class GBase():
     """
 
     # -------------------------------------------------------------------------
-    #
     # _event
-    #
     # -------------------------------------------------------------------------
 
     def _event( self, data, events ):
@@ -70,6 +70,10 @@ class GBase():
 
         return text
 
+    # -------------------------------------------------------------------------
+    # _shorten_data
+    # -------------------------------------------------------------------------
+
     def _shorten_data( self, data, keys ):
 
         data = { key: value for key, value in data.items() if not key in keys }
@@ -80,6 +84,10 @@ class GBase():
 
         return data
 
+
+    # -------------------------------------------------------------------------
+    # _shorten_event
+    # -------------------------------------------------------------------------
 
     def _shorten_event( self, data, keys ):
 
@@ -110,6 +118,8 @@ class GFamily(GBase):
     # -------------------------------------------------------------------------
 
     def __init__(self, family ):
+
+        self._family = Family()
 
         self._gedcomid = None
 
@@ -254,6 +264,8 @@ class GIndividual(GBase):
         self._parser = source
         self._url = url
         self._ref = None
+
+        self._individual = Individual()
 
         self._gedcomid = None
 
@@ -510,21 +522,22 @@ class GIndividual(GBase):
             for note in self._portrait['notes']:
                 note = note.splitlines()
                 first = True
-                if len(note) > 0:
-                    for line in note:
-                        wrapped_line = textwrap.wrap( line, width=200 )
+                for line in note:
+                    wrapped_line = textwrap.wrap( line, width=200 )
+                    if len(wrapped_line) == 0:
+                        wrapped_line = ['']
 
-                        if first:
-                            text = text + f"1 NOTE {wrapped_line[0]}\n"
-                        else:
-                            text = text + f"2 CONT {wrapped_line[0]}\n"
+                    if first:
+                        text = text + f"1 NOTE {wrapped_line[0]}\n"
+                    else:
+                        text = text + f"2 CONT {wrapped_line[0]}\n"
 
-                        wrapped_line.pop(0)
+                    wrapped_line.pop(0)
 
-                        for sub_line in wrapped_line:
-                            text = text + f"{"2" if first else "3"} CONC {sub_line}\n"
+                    for sub_line in wrapped_line:
+                        text = text + f"2 CONC {sub_line}\n"
 
-                        first = False
+                    first = False
 
         if hasattr(self, "_url") and not self._url is None:
             text = text + f"1 SOUR {self._url}\n"
@@ -698,21 +711,21 @@ class Genealogy(GBase):
         gedcom = gedcom + "0 @B00000@ SUBM\n"
         gedcom = gedcom + "1 NAME Laurent Burais\n"
         gedcom = gedcom + "1 CHAN\n"
-        gedcom = gedcom + f"2 DATE {(convert_date([str(datetime.today().day), str(datetime.today().month), str(datetime.today().year)]))}\n"
+        gedcom = gedcom + f"2 DATE {datetime.today().strftime("%d %b %Y").upper()}\n"
         gedcom = gedcom + "\n"
 
         # REPO
         idx = 0
-        for url, informations in self._repositories.items():
+        for informations in self._repositories.values():
 
             gedcom = gedcom + f"0 @R{idx:05d}@ REPO\n"
             if 'author' in informations:
-                gedcom = gedcom + f"1 NAME {informations['author']}\n"
+                gedcom = gedcom + f"1 NAME {informations.author}\n"
             if 'lastchange' in informations:
                 gedcom = gedcom + "1 CHAN\n"
-                gedcom = gedcom + f"2 DATE {informations['lastchange']}\n"
-            gedcom = gedcom + f"1 WWW {url}\n"
-            gedcom = gedcom + f"1 TYPE {informations['source']}\n"
+                gedcom = gedcom + f"2 DATE {informations.lastchange}\n"
+            gedcom = gedcom + f"1 WWW {informations.url}\n"
+            # gedcom = gedcom + f"1 TYPE {informations.source}\n"
             gedcom = gedcom + "\n"
 
             idx = idx + 1

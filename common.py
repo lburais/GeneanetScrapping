@@ -24,16 +24,8 @@ Package with common elements
 # -------------------------------------------------------------------------
 
 import urllib
-import os
-import sys
-import base64
 from pathlib import Path
 from datetime import datetime
-
-# https://pypi.org/project/babel/
-# pip3 install babel
-import babel
-import babel.dates
 
 # https://pypi.org/project/weasyprint/
 # pip3 install weasyprint
@@ -49,106 +41,6 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.pretty import pprint
 from rich.pretty import Pretty
-
-# https://pypi.org/project/selenium/
-# pip3 install selenium
-
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.common.exceptions import TimeoutException
-
-# -------------------------------------------------------------------------
-# convert_date
-# -------------------------------------------------------------------------
-
-def convert_date(datetab):
-    """
-    Function to convert a french date to GEDCOM date
-    """
-
-    convert = {
-        'ca': 'ABT',
-        'vers': 'ABT',
-        'à propos': 'ABT',
-        'estimé': 'EST',
-        'après': 'AFT',
-        'avant': 'BEF',
-        'entre': 'BET',
-        'et': 'AND'
-    }
-
-    try:
-        if len(datetab) == 0:
-            return None
-
-        idx = 0
-
-        # clean
-        datetab = [ v.strip() for v in datetab ]
-
-        # Assuming there is just a year and last element is the year
-
-        if len(datetab) == 1 or datetab[0] == 'en':
-            # avoid a potential month
-            if datetab[-1].isalpha():
-                return datetab[-1][0:4]
-
-            # avoid a potential , after the year
-            elif datetab[-1].isnumeric():
-                return datetab[-1][0:4]
-
-        # Between date
-
-        if datetab[0] == 'entre':
-            try:
-                index = datetab.index("et")
-                return convert[datetab[0]] + " " + convert_date(datetab[1:index]) + " " + convert[datetab[index]] + " " + convert_date(datetab[index+1:])
-            except ValueError:
-                pass
-
-        # Having prefix
-
-        if datetab[0] in convert:
-            return convert[datetab[0]] + " " + convert_date(datetab[1:])
-
-        # Skip 'le' prefix
-
-        if datetab[0] == 'le':
-            idx = 1
-
-        # In case of french language remove the 'er' prefix
-
-        if datetab[idx] == "1er":
-            datetab[idx] = "1"
-
-        months = dict(babel.dates.get_month_names(width='wide', locale='fr'))
-
-        # Just month and year
-        if datetab[idx].lower() in months.values():
-            bd1 = "1" + " " + str(list(months.keys())[list(months.values()).index(datetab[idx])]) + " " + datetab[idx+1][0:4]
-            bd2 = babel.dates.parse_date(bd1, locale='fr')
-            return bd2.strftime("%b %Y").upper()
-
-        try:
-            # day month year
-            bd1 = datetab[idx] + " " + str(list(months.keys())[list(months.values()).index(datetab[idx+1])]) + " " + datetab[idx+2][0:4]
-            bd2 = babel.dates.parse_date(bd1, locale='fr')
-        except ValueError:
-            # day monthnum year
-            bd1 = datetab[idx] + " " + datetab[idx+1] + " " + datetab[idx+2][0:4]
-            bd2 = babel.dates.parse_date(bd1, locale='fr')
-        except Exception as e:
-            display( f"Convert date: {type(e).__name__}", error=True )
-
-        return bd2.strftime("%d %b %Y").upper()
-
-    except Exception as e:
-        display( f"Date error ({type(e).__name__}): {' '.join(datetab)}", error=True )
-        raise ValueError from e
 
 # -------------------------------------------------------------------------
 # clean_query
@@ -191,29 +83,6 @@ def get_folder():
     return folder
 
 # -------------------------------------------------------------------------
-# convert_to_rtf
-# -------------------------------------------------------------------------
-
-def convert_to_rtf( text ):
-    """
-    Function to convert text to rtf
-    """
-
-    def ansi_to_rtf( text ):
-        """Convert ANSI text to RTF-safe format."""
-        converted_text = ''.join(f"\\u{ord(c)}?" if ord(c) > 127 else c for c in text)
-        converted_text = converted_text.replace( "\n", "\\par ")
-
-        return converted_text
-
-    rtf_content = r"""{\rtf1\ansi\deff0
-{\fonttbl{\f0\fnil\fcharset0 Courier New;}}
-\viewkind4\uc1\pard\f0\fs24 %s \par
-}""" % ansi_to_rtf( text )
-
-    return rtf_content
-
-# -------------------------------------------------------------------------
 # display
 # -------------------------------------------------------------------------
 
@@ -234,7 +103,8 @@ def display( what=None, title=None, level=0, error=False, exception=False ):
         elif isinstance( what, dict ):
 
             # console.print( Panel( Pretty(what), title=title, title_align='left' ) )
-            console.print( '\n', Panel( Text(title), style="green" ) )
+            if title:
+                console.print( '\n', Panel( Text(title ), style="green" ) )
             console.print( Pretty(what) )
 
         elif isinstance( what, str ):
@@ -310,90 +180,3 @@ def console_save( output ):
     display( "... completed")
 
     console._record_buffer = []
-
-# -------------------------------------------------------------------------
-# load_chrome
-# -------------------------------------------------------------------------
-
-def load_chrome( url, output_pdf=None, landscape=False):
-    """
-    Function to load a page with Chrome then save as pdf and return html
-    """
-
-    html = None
-    headless = urllib.parse.urlparse(url).scheme == 'file'
-
-    try:
-        # Chrome setup
-
-        chrome_options = webdriver.ChromeOptions()
-        if headless:
-            chrome_options.add_argument("--headless")  # Headless mode to avoid opening a browser window
-        chrome_options.add_argument("--kiosk-printing")  # Enables silent printing
-        chrome_options.add_argument("--disable-gpu")  # Disables GPU acceleration (helpful in some cases)
-
-        # Configure Chrome print settings to save as PDF
-        output_pdf.parent.mkdir(parents=True, exist_ok=True)
-        output_pdf.unlink(missing_ok=True)
-
-        chrome_options.add_experimental_option("prefs", {
-            "printing.print_preview_sticky_settings.appState": '{"recentDestinations":[{"id":"Save as PDF","origin":"local"}],"selectedDestinationId":"Save as PDF","version":2}',
-            "savefile.default_directory": str(output_pdf)
-        })
-
-        service = Service()  # No need to specify path if using Selenium 4.6+
-        browser = webdriver.Chrome(service=service, options=chrome_options)
-
-        # let's go browse
-
-        browser.get(url)
-
-        if not headless:
-
-            # wait for button click
-
-            try:
-                consent_button = WebDriverWait(browser, 20).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
-                )
-                ActionChains(browser).move_to_element(consent_button).click().perform()
-            except TimeoutException:
-                pass
-            except Exception as e:
-                display( f"Clickable: {type(e).__name__}", error=True )
-
-        # Process PDF
-        try:
-            # Use Chrome DevTools Protocol (CDP) to print as PDF
-            pdf_settings = {
-                "landscape": landscape,
-                "paperWidth": 8.5,
-                "paperHeight": 11,
-                "displayHeaderFooter": True,
-                "printBackground": False
-            }
-
-            # Execute CDP command to save as PDF
-            pdf_data = browser.execute_cdp_cmd("Page.printToPDF", pdf_settings)
-
-            # Save PDF to file
-            output_pdf.write_bytes(base64.b64decode(pdf_data["data"]))
-        except Exception as e:
-            display( f"Save PDF: {type(e).__name__}", error=True )
-            display( f'Failed to save PDF: {output_pdf}', error=True )
-
-        # Get HTML
-
-        html = browser.page_source
-
-    except Exception as e:
-        exc_type, exc_obj, exc_tb = sys.exc_info()
-        message = f'Exception {e} [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
-        display( message, error=True )
-        display( message, exception=True )
-        html = None
-
-    if browser:
-        browser.quit()
-
-    return html
