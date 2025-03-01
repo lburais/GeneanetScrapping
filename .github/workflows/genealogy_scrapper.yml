@@ -31,10 +31,6 @@ jobs:
         python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-    - name: Run Genealogy Scrapper
-      run: |
-        python genealogy_scrapper.py -h
-
     - name: Lint with flake8
       run: |
         pip install flake8
@@ -47,3 +43,9 @@ jobs:
       run: |
         pip install pytest
         pytest
+
+    - name: Compile with pyinstaller
+      run: |
+        pip install pyinstaller
+        pyinstaller --onefile genealogy_scrapper.py
+  
