@@ -469,7 +469,7 @@ class GIndividual(GBase):
                 text = text + f"1 FAMS @{family}@\n"
 
         if self._individual.data.familyid is not None:
-            text = text + f"1 FAMC @{self._individual.familyid}@\n"
+            text = text + f"1 FAMC @{self._individual.data.familyid}@\n"
 
         # notes
 
@@ -494,8 +494,8 @@ class GIndividual(GBase):
 
                     first = False
 
-        if self._individual.url is not None:
-            text = text + f"1 SOUR {self._individual.url}\n"
+        if self._individual.data.url is not None:
+            text = text + f"1 SOUR {self._individual.data.url}\n"
 
         # sources
 
@@ -525,7 +525,7 @@ class GIndividual(GBase):
         else:
             p = self._individual.copy()
 
-        display(p, title=f"Individual: {self._individual.data.ref}")
+        display(p, title=f"Individual: {self._individual.ref}")
 
 # --------------------------------------------------------------------------------------------------
 #
@@ -663,7 +663,7 @@ class Genealogy(GBase):
         gedcom = gedcom + "0 @B00000@ SUBM\n"
         gedcom = gedcom + "1 NAME Laurent Burais\n"
         gedcom = gedcom + "1 CHAN\n"
-        gedcom = gedcom + f"2 DATE {datetime.today().strftime("%d %b %Y").upper()}\n"
+        gedcom = gedcom + f"2 DATE {datetime.today().strftime('%d %b %Y').upper()}\n"
         gedcom = gedcom + "\n"
 
         # REPO

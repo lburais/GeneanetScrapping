@@ -126,7 +126,7 @@ def genealogy_scrapping(individuals, ascendants=False, descendants=False, spouse
 
             display("")
 
-            display(gedcom, title="GEDCOM")
+            # display(gedcom, title="GEDCOM")
 
             console_save(root_folder / f"{userid}" / "logs")
 
@@ -134,7 +134,7 @@ def genealogy_scrapping(individuals, ascendants=False, descendants=False, spouse
 
             genealogy.print()
 
-            display(gedcom, title="GEDCOM")
+            # display(gedcom, title="GEDCOM")
 
             if len(individuals) == 1:
                 display(genealogy.html(individuals[0]), title="HTML")

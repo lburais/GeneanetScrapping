@@ -360,11 +360,12 @@ class Geneanet:
 
             if len(datetab) == 1 or datetab[0] == 'en':
                 # avoid a potential month
-                if datetab[-1].isalpha():
-                    return datetab[-1][0:4]
+                # if datetab[-1].isalpha():
+                #     return datetab[-1][0:4]
 
                 # avoid a potential , after the year
-                elif datetab[-1].isnumeric():
+                # elif datetab[-1].isnumeric():
+                if datetab[-1].isnumeric():
                     return datetab[-1][0:4]
 
             # Between date
@@ -407,6 +408,8 @@ class Geneanet:
                 # day monthnum year
                 bd1 = datetab[idx] + " " + datetab[idx + 1] + " " + datetab[idx + 2][0:4]
                 bd2 = babel.dates.parse_date(bd1, locale='fr')
+            except IndexError:
+                pass
             except Exception as e:
                 display(f"Convert date: {type(e).__name__}", error=True)
 
@@ -565,19 +568,20 @@ class Geneanet:
 
         # Marriage
         try:
-            marriage = ' '.join(soup.find("em").get_text().split()).rstrip(",")
-            pattern = r"(?:Mariée?)?(?P<date>[^,]*)\s*(?:\((?P<alt>.*)\))?\s*(?:,\s*(?P<place>.*?))?(?=, à|$)"
-            family.data['marriage'], family.data['marriagedate'], family.data['marriageplace'] = self._extract_date_place(marriage, "Marié", pattern)
+            event = ' '.join(soup.find("em").get_text().split()).rstrip(",")
+            pattern = r"(?:^Mariée?)?(?P<date>[^,]*)\s*(?:\((?P<alt>.*)\))?\s*(?:,\s*(?P<place>.*?))?(?=, à|$)"
+            family.data['marriage'], family.data['marriagedate'], family.data['marriageplace'] = self._extract_date_place(event, "Marié", pattern)
         except AttributeError:
-            pass
+            if 'event' in locals() and event.find("Marié") >= 0:
+                display(f"Marriage: [{event}]", error=True)
         except Exception as e:
             display(f"Marriage: {type(e).__name__}", error=True)
 
         # Divorce
         try:
-            divorce = soup.get_text().lower()
+            event = soup.get_text().lower()
             pattern = r"(?:.*)divorcéée?\s*(?P<date>[^-(à]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
-            family.data['divorce'], family.data['divorcedate'], noplace = self._extract_date_place(divorce, "Divorcé", pattern)
+            family.data['divorce'], family.data['divorcedate'], noplace = self._extract_date_place(event, "Divorcé", pattern)
         except AttributeError:
             pass
         except Exception as e:
@@ -664,21 +668,23 @@ class Geneanet:
 
                     # birth
                     try:
-                        pattern = r"Née?\s*(?P<date>[^-(à]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
+                        pattern = r"^Née?\s*(?P<date>[^-(à]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
                         event = ' '.join(section.content.find('li', string=lambda text: "Né" in text if text else False).get_text().split())
                         person.data.birth, person.data.birthdate, person.data.birthplace = self._extract_date_place(event, "Né", pattern)
                     except AttributeError:
-                        pass
+                        if 'event' in locals() and event.find("Né") >= 0:
+                            display(f"Birth: [{event}]", error=True)
                     except Exception as e:
                         display(f"Birth: {type(e).__name__}", error=True)
 
                     # death
                     try:
-                        pattern = r"Décédée?\s*(?P<date>[^-(à]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
+                        pattern = r"^Décédée?\s*(?P<date>[^-(à]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
                         event = ' '.join(section.content.find('li', string=lambda text: "Décédé" in text if text else False).get_text().split())
                         person.data.death, person.data.deathdate, person.data.deathplace = self._extract_date_place(event, "Décédé", pattern)
                     except AttributeError:
-                        pass
+                        if 'event' in locals() and event.find("Décédé") >= 0:
+                            display(f"Death: [{event}]", error=True)
                     except Exception as e:
                         display(f"Death: {type(e).__name__}", error=True)
 
@@ -712,7 +718,8 @@ class Geneanet:
                         event = ' '.join(section.content.find('li', string=lambda text: "inhumé" in text.lower() if text else False).get_text().split())
                         person.data.burial, person.data.burialdate, person.data.burialplace = self._extract_date_place(event, "Inhumé", pattern)
                     except (AttributeError, IndexError):
-                        pass
+                        if 'event' in locals() and event and event.find("nhumé") >= 0:
+                            display(f"Burial: [{event}]", error=True)
                     except Exception as e:
                         display(f"Burial: {type(e).__name__}", error=True)
 
