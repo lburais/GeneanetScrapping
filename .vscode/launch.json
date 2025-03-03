@@ -24,28 +24,20 @@
             "args": "-l 200 -a -s"
         },
         {
+            "name": "Unique",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "genealogy_scrapper.py",
+            "console": "integratedTerminal",
+            "args": "-l 0 -a -s -o -u"
+        },
+        {
             "name": "Single",
             "type": "debugpy",
             "request": "launch",
             "program": "genealogy_scrapper.py",
             "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/sanso2b?p=gian+lorenzo&n=giorgi&oc=1' -l 1 -a -s"
-        },
-        {
-            "name": "3 gen",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "genealogy_scrapper.py",
-            "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/comrade28?iz=0&p=nicholas&n=de+bacqueville' -l 2 -a -s"
-        },
-        {
-            "name": "Léon",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "genealogy_scrapper.py",
-            "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/lipari?pz=alexia&nz=henry&p=leon+desire+louis&n=bessey' -l 100 -a -s -d"
+            "args": "'https://gw.geneanet.org/plongeur?p=raoul&n=le+chambellan' -l 1 -a -s"
         }
     ]
 }

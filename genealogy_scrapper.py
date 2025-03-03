@@ -126,17 +126,14 @@ def genealogy_scrapping(individuals, ascendants=False, descendants=False, spouse
 
             display("")
 
-            # display(gedcom, title="GEDCOM")
-
             console_save(root_folder / f"{userid}" / "logs")
 
             # Save outcome
 
             genealogy.print()
 
-            # display(gedcom, title="GEDCOM")
-
             if len(individuals) == 1:
+                display(gedcom, title="GEDCOM")
                 display(genealogy.html(individuals[0]), title="HTML")
 
             console_save(root_folder / f"{userid}" / "genealogy")
@@ -162,6 +159,7 @@ def main():
     parser.add_argument("-l", "--level", default=0, type=int, help="Number of level to explore (0 by default)")
     parser.add_argument("-f", "--force", default=False, action='store_true', help="Force preloading web page (off by default)")
     parser.add_argument("-o", "--one", default=False, action='store_true', help="All in one file (off by default)")
+    parser.add_argument("-u", "--unique", default=False, action='store_true', help="To test specific individuals (off by default)")
     parser.add_argument("searchedindividual", type=str, nargs='?', help="Url of the individual to search in Geneanet")
     args = parser.parse_args()
 
@@ -171,31 +169,40 @@ def main():
     spouses = args.spouses
     max_levels = args.level
     one = args.one
+    unique = args.unique
 
     if max_levels is None:
         max_levels = 0
 
     if args.searchedindividual is None:
 
-        searchedindividuals = [
-            'https://gw.geneanet.org/lipari?p=leon+desire+louis&n=bessey',              # lipari - Léon Désiré Louis Bessey
-            'https://gw.geneanet.org/asempey?n=jantieu&p=margueritte&oc=0',             # asempey - Marguerite Jantieu
-            'https://gw.geneanet.org/iraird?p=nicholas&n=le+teuton',                    # iraird - Nicholas le Teuton
-            'https://gw.geneanet.org/plongeur?p=charlotte+marie&n=postel',              # plongeur - Charlotte Marie Postel
-            'https://gw.geneanet.org/sarahls?p=marcel+marius&n=lhomme',                 # sarahls - Marcel Marius Lhomme
-            'https://gw.geneanet.org/balcaraz?n=stefani&oc=1&p=leonard',                # balcaraz - Léonard Stéphani
-            'https://gw.geneanet.org/zeking?iz=2&p=6+2+leonard&n=stefani',              # zeking - Léonard Stéphani
-            'https://gw.geneanet.org/sanso2b?p=romain+jean+michel&n=burais',            # sanso2b - Romain Jean Michel Burais
-            'https://gw.geneanet.org/zlc061?p=marie+rose&n=cler&oc=1',                  # zlc061 - Marie Rose Cler
-            'https://gw.geneanet.org/12marcel?p=marie+rose&n=cler',                     # 12marcel - Marie Rose Cler
-            'https://gw.geneanet.org/pierreb0142?p=desire+antonin&n=bessey',            # pierre0142 - Désiré Antonin Bessey
-            'https://gw.geneanet.org/comrade28?iz=0&p=nicholas&n=de+bacqueville',       # comrade28 - Nicholas de Bacqueville
-            # 'https://gw.geneanet.org/lburais_w?p=milo&n=x&oc=1125',                     # lburais - Milo
-            # 'https://gw.geneanet.org/alandur',                                        # alandur
-            # 'https://gw.geneanet.org/domale',                                         # domale
-            # 'https://gw.geneanet.org/malugi',                                         # malugi
-        ]
+        if unique is False:
 
+            searchedindividuals = [
+                'https://gw.geneanet.org/lipari?p=leon+desire+louis&n=bessey',              # lipari - Léon Désiré Louis Bessey
+                'https://gw.geneanet.org/asempey?n=jantieu&p=margueritte&oc=0',             # asempey - Marguerite Jantieu
+                'https://gw.geneanet.org/iraird?p=nicholas&n=le+teuton',                    # iraird - Nicholas le Teuton
+                'https://gw.geneanet.org/plongeur?p=charlotte+marie&n=postel',              # plongeur - Charlotte Marie Postel
+                'https://gw.geneanet.org/sarahls?p=marcel+marius&n=lhomme',                 # sarahls - Marcel Marius Lhomme
+                'https://gw.geneanet.org/balcaraz?n=stefani&oc=1&p=leonard',                # balcaraz - Léonard Stéphani
+                'https://gw.geneanet.org/zeking?iz=2&p=6+2+leonard&n=stefani',              # zeking - Léonard Stéphani
+                'https://gw.geneanet.org/sanso2b?p=romain+jean+michel&n=burais',            # sanso2b - Romain Jean Michel Burais
+                'https://gw.geneanet.org/zlc061?p=marie+rose&n=cler&oc=1',                  # zlc061 - Marie Rose Cler
+                'https://gw.geneanet.org/12marcel?p=marie+rose&n=cler',                     # 12marcel - Marie Rose Cler
+                'https://gw.geneanet.org/pierreb0142?p=desire+antonin&n=bessey',            # pierre0142 - Désiré Antonin Bessey
+                'https://gw.geneanet.org/comrade28?iz=0&p=nicholas&n=de+bacqueville',       # comrade28 - Nicholas de Bacqueville
+                # 'https://gw.geneanet.org/lburais_w?p=milo&n=x&oc=1125',                     # lburais - Milo
+                # 'https://gw.geneanet.org/alandur',                                        # alandur
+                # 'https://gw.geneanet.org/domale',                                         # domale
+                # 'https://gw.geneanet.org/malugi',                                         # malugi
+            ]
+
+        else:
+
+            searchedindividuals = [
+                'https://gw.geneanet.org/plongeur?p=bernard&n=de+bigorre',                  # sex
+                'https://gw.geneanet.org/plongeur?p=inconnue&n=fe+de+pierrepont&oc=1',      # sex / sections
+            ]
     else:
         searchedindividuals = [args.searchedindividual]
 
