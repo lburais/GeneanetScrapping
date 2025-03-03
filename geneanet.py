@@ -718,7 +718,7 @@ class Geneanet:
                         for line in lines:
                             if all(word not in line.get_text().lower() for word in words):
                                 person.data.occupation = ' '.join(line.get_text().split())
-                                display(f"OCCUPATION: {person.data.occupation}")
+                                display(f"** OCCUPATION: {person.data.occupation}")
                                 break
 
                     except Exception as e:
