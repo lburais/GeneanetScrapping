@@ -91,7 +91,9 @@ def genealogy_scrapping(individuals, ascendants=False, descendants=False, spouse
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            message = f'{e} with scrapping [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
+            message = f'{e} with scrapping [{exc_type} - {exc_obj}] ' + \
+                      f'in {exc_tb.tb_frame.f_code.co_name} ' + \
+                      f'at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
             display(message, error=True)
 
         # enable screenlock
@@ -200,8 +202,7 @@ def main():
         else:
 
             searchedindividuals = [
-                'https://gw.geneanet.org/plongeur?p=bernard&n=de+bigorre',                  # sex
-                'https://gw.geneanet.org/plongeur?p=inconnue&n=fe+de+pierrepont&oc=1',      # sex / sections
+                'https://gw.geneanet.org/plongeur?p=michel&n=de+la+rue&oc=1',               # place
             ]
     else:
         searchedindividuals = [args.searchedindividual]

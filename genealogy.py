@@ -33,7 +33,7 @@ import textwrap
 #
 # -------------------------------------------------------------------------
 
-from common import display, clean_query
+from common import display
 from geneanet import Geneanet
 
 # from objects import Individual, Family
@@ -62,11 +62,16 @@ class GBase():
         text = ""
         for event in events:
             if event[1] in data and data[event[1]]:
-                text = text + f"1 {event[0]}\n"
+                text += f"1 {event[0]}\n"
                 if f"{event[1]}date" in data and data[f"{event[1]}date"]:
-                    text = text + f"2 DATE {data[f'{event[1]}date']}\n"
+                    text += f"2 DATE {data[f'{event[1]}date']}\n"
                 if f"{event[1]}place" in data and data[f"{event[1]}place"]:
-                    text = text + f"2 PLAC {data[f'{event[1]}place']}\n"
+                    place = data[f'{event[1]}place']
+                    text += f"2 PLAC {place.fullname}\n"
+                    if place.latitude:
+                        text += f"3 LATI {'N' if float(place.latitude) > 0 else 'S'}{abs(float(place.latitude)):.4f}\n"
+                    if place.longitude:
+                        text += f"3 LONG {'E' if float(place.longitude) > 0 else 'W'}{abs(float(place.longitude)):.4f}\n"
 
         return text
 
@@ -140,18 +145,18 @@ class GFamily(GBase):
         self._family.data.spousesid = []
         for spouse in self._family.spousesref:
             try:
-                self._family.data.spousesid = self._family.data.spousesid + [individuals_table[spouse]]
+                self._family.data.spousesid += [individuals_table[spouse]]
             except KeyError:
-                self._family.data.spousesid = self._family.data.spousesid + [None]
+                self._family.data.spousesid += [None]
             except Exception as e:
                 display(f"Family spousesid: {type(e).__name__}", error=True)
 
         self._family.data.childsid = []
         for child in self._family.childsref:
             try:
-                self._family.data.childsid = self._family.data.childsid + [individuals_table[child]]
+                self._family.data.childsid += [individuals_table[child]]
             except KeyError:
-                self._family.data.childsid = self._family.data.childsid + [None]
+                self._family.data.childsid += [None]
             except Exception as e:
                 display(f"Family childid: {type(e).__name__}", error=True)
 
@@ -187,22 +192,22 @@ class GFamily(GBase):
         text = ""
         if self._family.data.gedcomid:
 
-            text = text + f"0 @{self._family.data.gedcomid}@ FAM\n"
+            text += f"0 @{self._family.data.gedcomid}@ FAM\n"
 
             if self._family.data.spousesid[0]:
-                text = text + f"1 HUSB @{self._family.data.spousesid[0]}@\n"
+                text += f"1 HUSB @{self._family.data.spousesid[0]}@\n"
 
             if self._family.data.spousesid[1]:
-                text = text + f"1 WIFE @{self._family.data.spousesid[1]}@\n"
+                text += f"1 WIFE @{self._family.data.spousesid[1]}@\n"
 
             for childid in self._family.data.childsid:
                 if childid:
-                    text = text + f"1 CHIL @{childid}@\n"
+                    text += f"1 CHIL @{childid}@\n"
 
             events = [('MARR', 'marriage'), ('DIV', 'divorce')]
-            text = text + self._event(self._family.data, events)
+            text += self._event(self._family.data, events)
 
-            text = text + "\n"
+            text += "\n"
 
         return text
 
@@ -287,24 +292,24 @@ class GIndividual(GBase):
         self._individual.data.parentsid = []
         for parent in self._individual.parentsref:
             try:
-                self._individual.data.parentsid = self._individual.data.parentsid + [individuals_table[parent]]
+                self._individual.data.parentsid += [individuals_table[parent]]
             except KeyError:
                 pass
             except Exception as e:
                 display(f"Parentsid: {type(e).__name__}", error=True)
-                self._individual.data.parentsid = self._individual.data.parentsid + [None]
+                self._individual.data.parentsid += [None]
 
         # Siblings INDI id
 
         self._individual.data.siblingsid = []
         for sibling in self._individual.siblingsref:
             try:
-                self._individual.data.siblingsid = self._individual.data.siblingsid + [individuals_table[sibling]]
+                self._individual.data.siblingsid += [individuals_table[sibling]]
             except KeyError:
-                self._individual.data.siblingsid = self._individual.data.siblingsid + [None]
+                self._individual.data.siblingsid += [None]
             except Exception as e:
                 display(f"Siblingsid: {type(e).__name__}", error=True)
-                self._individual.data.siblingsid = self._individual.data.siblingsid + [None]
+                self._individual.data.siblingsid += [None]
 
         # Parents FAM id
 
@@ -326,16 +331,16 @@ class GIndividual(GBase):
         self._individual.data.familiesid = []
         for family in self._individual.families:
             try:
-                self._individual.data.familiesid = self._individual.data.familiesid + [families_table[tuple(family.spousesref)]]
+                self._individual.data.familiesid += [families_table[tuple(family.spousesref)]]
             except KeyError:
                 try:
-                    self._individual.data.familiesid = self._individual.data.familiesid + [families_table[tuple(family.spousesref)[::-1]]]
+                    self._individual.data.familiesid += [families_table[tuple(family.spousesref)[::-1]]]
                 except Exception as e2:
                     display(f"Familiesid (2): {type(e2).__name__}", error=True)
-                    self._individual.data.familiesid = self._individual.data.familiesid + [None]
+                    self._individual.data.familiesid += [None]
             except Exception as e:
                 display(f"Familiesid (1): {type(e).__name__}", error=True)
-                self._individual.data.familiesid = self._individual.data.familiesid + [None]
+                self._individual.data.familiesid += [None]
 
     # -------------------------------------------------------------------------
     # url
@@ -443,33 +448,37 @@ class GIndividual(GBase):
 
         text = ""
         if self._individual.data.gedcomid:
-            text = text + f"0 @{self._individual.data.gedcomid}@ INDI\n"
+            text += f"0 @{self._individual.data.gedcomid}@ INDI\n"
 
         names = {'name': "", "first": "", "last": ""}
+
         if 'firstname' in self._individual.data:
             names['name'] = self._individual.data['firstname']
             names["first"] = f"2 GIVN {self._individual.data['firstname']}\n"
+
         if 'lastname' in self._individual.data:
-            names['name'] = names['name'] + f" /{self._individual.data['lastname']}/"
+            names['name'] += f" /{self._individual.data['lastname']}/"
             names["last"] = f"2 SURN {self._individual.data['lastname']}\n"
+
         if len(names['name']) > 0:
             names['name'] = f"1 NAME {names['name'].strip()}\n"
-        text = text + ''.join([name for key, name in names.items() if len(name) > 0])
+
+        text += ''.join([name for key, name in names.items() if len(name) > 0])
 
         if 'sex' in self._individual.data:
-            text = text + f"1 SEX {self._individual.data['sex']}\n"
+            text += f"1 SEX {self._individual.data['sex']}\n"
 
         events = [('BIRT', 'birth'), ('DEAT', 'death'), ('BURI', 'burial')]
-        text = text + self._event(self._individual.data, events)
+        text += self._event(self._individual.data, events)
 
         # family
 
         for family in self._individual.data.familiesid:
             if family:
-                text = text + f"1 FAMS @{family}@\n"
+                text += f"1 FAMS @{family}@\n"
 
         if self._individual.data.familyid is not None:
-            text = text + f"1 FAMC @{self._individual.data.familyid}@\n"
+            text += f"1 FAMC @{self._individual.data.familyid}@\n"
 
         # notes
 
@@ -483,23 +492,23 @@ class GIndividual(GBase):
                         wrapped_line = ['']
 
                     if first:
-                        text = text + f"1 NOTE {wrapped_line[0]}\n"
+                        text += f"1 NOTE {wrapped_line[0]}\n"
                     else:
-                        text = text + f"2 CONT {wrapped_line[0]}\n"
+                        text += f"2 CONT {wrapped_line[0]}\n"
 
                     wrapped_line.pop(0)
 
                     for sub_line in wrapped_line:
-                        text = text + f"2 CONC {sub_line}\n"
+                        text += f"2 CONC {sub_line}\n"
 
                     first = False
 
         if self._individual.data.url is not None:
-            text = text + f"1 SOUR {self._individual.data.url}\n"
+            text += f"1 SOUR {self._individual.data.url}\n"
 
         # sources
 
-        text = text + "\n"
+        text += "\n"
 
         return text
 
@@ -569,17 +578,17 @@ class Genealogy(GBase):
         parsed_url = urlparse(url)
         repository = urlunparse((parsed_url.scheme, parsed_url.netloc, parsed_url.path, '', '', ''))
 
-        ref = clean_query(url)
+        if 'geneanet' in url:
+            if not isinstance(self._parser, Geneanet):
+                self._parser = Geneanet()
+        else:
+            self._parser = None
+
+        ref = self._parser.clean_query(url)
 
         if ref not in self._individuals:
 
             # Parser
-
-            if 'geneanet' in url:
-                if not isinstance(self._parser, Geneanet):
-                    self._parser = Geneanet()
-            else:
-                self._parser = None
 
             # Source
 
@@ -695,6 +704,9 @@ class Genealogy(GBase):
         # TAILER
 
         gedcom = gedcom + "0 TRLR"
+
+        if self._parser:
+            self._parser.save()
 
         return gedcom
 

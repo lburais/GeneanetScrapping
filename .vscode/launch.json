@@ -37,7 +37,15 @@
             "request": "launch",
             "program": "genealogy_scrapper.py",
             "console": "integratedTerminal",
-            "args": "'https://gw.geneanet.org/plongeur?p=raoul&n=le+chambellan' -l 1 -a -s"
+            "args": "'https://gw.geneanet.org/lipari?p=leon+desire+louis&n=bessey' -l 1 -a -s"
+        },
+        {
+            "name": "3 gen",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "genealogy_scrapper.py",
+            "console": "integratedTerminal",
+            "args": "'https://gw.geneanet.org/lburais_w?p=jean+leonard&n=burais&oc=0' -l 3 -a -s"
         }
     ]
 }

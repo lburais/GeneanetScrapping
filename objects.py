@@ -85,8 +85,10 @@ class Place(_object):
     def __init__(self, *args, **kwargs):
         defaults = {
             'name': None,
+            'fullname': None,
             'latitude': None,
             'longitude': None,
+            'placeid': None,
         }
 
         super().__init__(defaults, *args, **kwargs)

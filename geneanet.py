@@ -29,6 +29,8 @@ import sys
 import os
 import urllib
 import base64
+import pickle
+import requests
 
 # https://pypi.org/project/beautifulsoup4/
 # pip3 install bs4
@@ -51,14 +53,20 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException
 
+#
+# https://geopy.readthedocs.io/en/stable/
+# https://pypi.org/project/geopy/
+# pip3 install geopy
+# import geopy
+
 # -------------------------------------------------------------------------
 #
 # Internal Python Modules
 #
 # -------------------------------------------------------------------------
 
-from common import display, get_folder, clean_query
-from objects import Informations, Individual, Family
+from common import display, get_folder
+from objects import Informations, Individual, Family, Place
 
 # -------------------------------------------------------------------------
 #
@@ -78,6 +86,21 @@ class Geneanet:
     def __init__(self):
         self._folder = get_folder()
         self._html = None
+        self._places = {}
+
+        # pickle_file = self._folder / "geneanet" / "places.pickle"
+        # pickle_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # if pickle_file.exists():
+
+        #     with pickle_file.open("rb") as file:
+        #         self._places = pickle.load(file)
+
+    # -------------------------------------------------------------------------
+    # __del__
+    # -------------------------------------------------------------------------
+    def __del__(self):
+        self.save()
 
     # -------------------------------------------------------------------------
     # _load
@@ -91,7 +114,7 @@ class Geneanet:
             if len(urllib.parse.urlparse(url).query) == 0:
                 output_file = "repository"
             else:
-                output_file = clean_query(url).replace('=', "_").replace('+', " ").replace('&', ".")
+                output_file = self.clean_query(url).replace('=', "_").replace('+', " ").replace('&', ".")
 
             output_txt = output_folder / (output_file + ".txt")
 
@@ -210,9 +233,10 @@ class Geneanet:
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            message = f'Exception {e} [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
+            message = f'Exception {e} [{exc_type} - {exc_obj}] ' + \
+                      f'in {exc_tb.tb_frame.f_code.co_name} ' + \
+                      f'at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
             display(message, error=True)
-            display(message, exception=True)
             self._html = None
 
         return self._html
@@ -267,13 +291,45 @@ class Geneanet:
         return contents
 
     # -------------------------------------------------------------------------
-    # _place
+    # _get_place
     # -------------------------------------------------------------------------
 
-    def _place(self, place):
-        """
-        Function to get a place from GeoNames
-        """
+    def _get_place(self, where):
+
+        place = Place()
+        place.name = where
+        place.fullname = where
+
+        try:
+            location_query = place.name
+            location = None
+
+            nominatim_url = "https://nominatim.openstreetmap.org/search"
+
+            params = {
+                'q': location_query,
+                'format': 'json',
+                'limit': 1,
+                'addressdetails': 1
+            }
+            headers = {
+                'User-Agent': 'genealogy-scapper/1.0'
+            }
+
+            response = requests.get(nominatim_url, headers=headers, params=params, timeout=10)
+
+            if response.status_code == 200:
+                if len(response.json()) > 0:
+                    location = response.json()[0]
+                    place.fullname = location['display_name']
+                    place.latitude = location['lat']
+                    place.longitude = location['lon']
+                    place.placeid = location['place_id']
+            else:
+                display(f'Nominatim cannot fetch data for ({where}) [{response.status_code}]: {response.text}')
+
+        except Exception as e:
+            display(f"get place - {where}: {type(e).__name__}", error=True)
 
         return place
 
@@ -309,8 +365,17 @@ class Geneanet:
 
             try:  # place
 
-                # if date:
-                place = event.group('place').strip()
+                where = event.group('place').strip()
+
+                if where in self._places:
+                    place = self._places[where]
+                else:
+                    place = self._get_place(event.group('place').strip())
+
+                    if not place.placeid:
+                        place = self._get_place(event.group('place').strip().split(",")[0])
+
+                    self._places[where] = place
 
             except AttributeError:
                 pass
@@ -545,20 +610,20 @@ class Geneanet:
         # spouses ref
         try:
             # first <a> can be a ref to sosa
-            family.spousesref = [clean_query(personref), clean_query([a for a in soup.find_all('a') if a.get_text(strip=True)][0]['href'])]
+            family.spousesref = [self.clean_query(personref), self.clean_query([a for a in soup.find_all('a') if a.get_text(strip=True)][0]['href'])]
 
         except IndexError:
             pass
         except Exception as e:
             display(f"Family spouses: {type(e).__name__}", error=True)
-            family.spousesref = [clean_query(personref), None]
+            family.spousesref = [self.clean_query(personref), None]
 
         # Childs
         childsref = []
         try:
             for item in soup.find("ul").find_all("li", recursive=False):
                 # first <a> can be a ref to sosa
-                childsref = childsref + [clean_query([a for a in item.find_all('a') if a.get_text(strip=True)][0]['href'])]
+                childsref = childsref + [self.clean_query([a for a in item.find_all('a') if a.get_text(strip=True)][0]['href'])]
             family.childsref = childsref
 
         except AttributeError:
@@ -629,7 +694,7 @@ class Geneanet:
         try:
             # Reference
             person.data.url = url
-            person.ref = clean_query(url)
+            person.ref = self.clean_query(url)
 
             # read web page
 
@@ -691,7 +756,7 @@ class Geneanet:
 
                     # baptem
                     try:
-                        pattern = r"(?:.*)Baptisée?\s*(?P<date>[^-(à,]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?"
+                        pattern = r"(?:.*)Baptisée?\s*(?P<date>[^-(à,]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
                         event = ' '.join(section.content.find('li', string=lambda text: "baptisé" in text.lower() if text else False).get_text().split())
                         person.data.baptem, person.data.baptemdate, person.data.baptemplace = self._extract_date_place(event, "Baptisé", pattern)
                     except (AttributeError, IndexError):
@@ -740,7 +805,7 @@ class Geneanet:
                 # -------------------------------------------------------------
                 elif 'parents' in section.name.lower():
                     try:
-                        person.parentsref = [clean_query(item['href']) for item in section.content.find_all("a") if len(item.find_all("img", {"alt": "sosa"})) == 0]
+                        person.parentsref = [self.clean_query(item['href']) for item in section.content.find_all("a") if len(item.find_all("img", {"alt": "sosa"})) == 0]
                     except Exception as e:
                         display(f"Parents: {type(e).__name__}", error=True)
 
@@ -774,7 +839,7 @@ class Geneanet:
                             tag_a = item.find('a')
                             if tag_a.get_text(strip=True):
                                 # first <a> can be a ref to sosa
-                                person.siblingsref = person.siblingsref + [clean_query(tag_a['href'])]
+                                person.siblingsref = person.siblingsref + [self.clean_query(tag_a['href'])]
 
                     except AttributeError:
                         pass
@@ -829,7 +894,7 @@ class Geneanet:
     # informations
     # -------------------------------------------------------------------------
 
-    def informations(self, url, force=True):
+    def informations(self, url, force=False):
         """
         Function to get informations about the Geneanet owner
         """
@@ -861,6 +926,34 @@ class Geneanet:
         return infos
 
     # -------------------------------------------------------------------------
+    # clean_query
+    # -------------------------------------------------------------------------
+
+
+    def clean_query(self, url):
+        """
+        Function to return the query part of an url without unnecessary geneanet queries
+        """
+
+        queries = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+        if len(queries) > 0:
+            queries_to_keep = ['m', 'v', 'p', 'n', 'oc', 'i']
+
+            removed_queries = {k: v for k, v in queries.items() if k not in queries_to_keep + ['lang', 'pz', 'nz', 'iz']}
+            if len(removed_queries) > 0:
+                display(f"Removed queries: {removed_queries}")
+
+            if 'n' not in queries:
+                queries['n'] = ""
+
+            if 'p' not in queries:
+                queries['p'] = ""
+
+            return urllib.parse.urlencode({k: v for k, v in queries.items() if k in queries_to_keep}, doseq=True)
+        else:
+            return url
+
+    # -------------------------------------------------------------------------
     # html
     # -------------------------------------------------------------------------
 
@@ -870,3 +963,21 @@ class Geneanet:
         Function to return the perso bloc
         """
         return self._html.prettify()
+
+    # -------------------------------------------------------------------------
+    # save
+    # -------------------------------------------------------------------------
+
+    def save(self):
+        """
+        Function to save places in a pickle
+        """
+
+        pickle_file = self._folder / "geneanet" / "places.pickle"
+        pickle_file.parent.mkdir(parents=True, exist_ok=True)
+        pickle_file.unlink(missing_ok=True)
+
+        with pickle_file.open("wb") as file:
+            pickle.dump(self._places, file)
+
+        display(self._places, title="Places")
