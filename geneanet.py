@@ -29,8 +29,6 @@ import sys
 import os
 import urllib
 import base64
-import pickle
-import requests
 
 # https://pypi.org/project/beautifulsoup4/
 # pip3 install bs4
@@ -87,20 +85,6 @@ class Geneanet:
         self._folder = get_folder()
         self._html = None
         self._places = {}
-
-        # pickle_file = self._folder / "geneanet" / "places.pickle"
-        # pickle_file.parent.mkdir(parents=True, exist_ok=True)
-
-        # if pickle_file.exists():
-
-        #     with pickle_file.open("rb") as file:
-        #         self._places = pickle.load(file)
-
-    # -------------------------------------------------------------------------
-    # __del__
-    # -------------------------------------------------------------------------
-    def __del__(self):
-        self.save()
 
     # -------------------------------------------------------------------------
     # _load
@@ -291,49 +275,6 @@ class Geneanet:
         return contents
 
     # -------------------------------------------------------------------------
-    # _get_place
-    # -------------------------------------------------------------------------
-
-    def _get_place(self, where):
-
-        place = Place()
-        place.name = where
-        place.fullname = where
-
-        try:
-            location_query = place.name
-            location = None
-
-            nominatim_url = "https://nominatim.openstreetmap.org/search"
-
-            params = {
-                'q': location_query,
-                'format': 'json',
-                'limit': 1,
-                'addressdetails': 1
-            }
-            headers = {
-                'User-Agent': 'genealogy-scapper/1.0'
-            }
-
-            response = requests.get(nominatim_url, headers=headers, params=params, timeout=10)
-
-            if response.status_code == 200:
-                if len(response.json()) > 0:
-                    location = response.json()[0]
-                    place.fullname = location['display_name']
-                    place.latitude = location['lat']
-                    place.longitude = location['lon']
-                    place.placeid = location['place_id']
-            else:
-                display(f'Nominatim cannot fetch data for ({where}) [{response.status_code}]: {response.text}')
-
-        except Exception as e:
-            display(f"get place - {where}: {type(e).__name__}", error=True)
-
-        return place
-
-    # -------------------------------------------------------------------------
     # _extract_date_place
     # -------------------------------------------------------------------------
 
@@ -367,15 +308,10 @@ class Geneanet:
 
                 where = event.group('place').strip()
 
-                if where in self._places:
-                    place = self._places[where]
-                else:
-                    place = self._get_place(event.group('place').strip())
+                if where not in self._places:
+                    self._places[where] = Place(where)
 
-                    if not place.placeid:
-                        place = self._get_place(event.group('place').strip().split(",")[0])
-
-                    self._places[where] = place
+                place = self._places[where]
 
             except AttributeError:
                 pass
@@ -963,21 +899,3 @@ class Geneanet:
         Function to return the perso bloc
         """
         return self._html.prettify()
-
-    # -------------------------------------------------------------------------
-    # save
-    # -------------------------------------------------------------------------
-
-    def save(self):
-        """
-        Function to save places in a pickle
-        """
-
-        pickle_file = self._folder / "geneanet" / "places.pickle"
-        pickle_file.parent.mkdir(parents=True, exist_ok=True)
-        pickle_file.unlink(missing_ok=True)
-
-        with pickle_file.open("wb") as file:
-            pickle.dump(self._places, file)
-
-        display(self._places, title="Places")

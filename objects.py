@@ -19,6 +19,8 @@ Package with genealogy objects
 
 # pylint: disable=C0112,C0116
 
+import requests
+
 from common import display
 
 # --------------------------------------------------------------------------------------------------
@@ -82,14 +84,58 @@ class Place(_object):
     Place
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, where, *args, **kwargs):
         defaults = {
-            'name': None,
-            'fullname': None,
-            'latitude': None,
-            'longitude': None,
-            'placeid': None,
+            'name': where,
+            'search': where.split(',')[0].strip() + f", {where.split(',')[-1].strip()}" if len(where.split(',')) > 1 else '',
+            'fullname': where,
         }
+
+        try:
+            nominatim_url = "https://nominatim.openstreetmap.org/search"
+
+            params = {
+                # 'q': defaults['search'],
+                'country': where.split(',')[-1].strip(),
+                'format': 'json',
+                'limit': 10,
+                'addressdetails': 1,
+                'extratags': 1,
+                'layer': 'address',
+            }
+            if len(where.split(',')) > 1:
+                params['city'] = where.split(',')[0].strip()
+            headers = {
+                'User-Agent': 'genealogy-scapper/1.0',
+                'Accept-Language': 'fr',
+            }
+
+            response = requests.get(nominatim_url, headers=headers, params=params, timeout=10)
+
+            if response.status_code == 200:
+                if len(response.json()) > 0:
+
+                    for loc in response.json():
+                        display(f"[{response.json().index(loc):2d}] {loc['addresstype']}: {loc['type']}: {loc['display_name']}")
+
+                    defaults['fullname'] = response.json()[0]['display_name']
+                    defaults['latitude'] = response.json()[0]['lat']
+                    defaults['longitude'] = response.json()[0]['lon']
+                    defaults['addresstype'] = response.json()[0]['addresstype']
+                    defaults['address'] = response.json()[0]['address']
+                    if 'wikidata' in response.json()[0]['extratags']:
+                        defaults['wikidata'] = f"https://www.wikidata.org/wiki/{response.json()[0]['extratags']['wikidata']}"
+                    if 'wikipedia' in response.json()[0]['extratags']:
+                        defaults['wikipedia'] = f"https://fr.wikipedia.org/wiki/{response.json()[0]['extratags']['wikipedia']}"
+                    if 'website' in response.json()[0]['extratags']:
+                        defaults['website'] = response.json()[0]['extratags']['website']
+
+            else:
+                display(f'!! Nominatim cannot fetch data for ({where}) [{response.status_code}]: {response.text}')
+
+            # place.featureType = 'suburb'
+        except Exception as e:
+            display(f"get place - {where}: {type(e).__name__}", error=True)
 
         super().__init__(defaults, *args, **kwargs)
 

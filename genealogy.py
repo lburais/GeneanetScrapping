@@ -68,10 +68,10 @@ class GBase():
                 if f"{event[1]}place" in data and data[f"{event[1]}place"]:
                     place = data[f'{event[1]}place']
                     text += f"2 PLAC {place.fullname}\n"
-                    if place.latitude:
-                        text += f"3 LATI {'N' if float(place.latitude) > 0 else 'S'}{abs(float(place.latitude)):.4f}\n"
-                    if place.longitude:
-                        text += f"3 LONG {'E' if float(place.longitude) > 0 else 'W'}{abs(float(place.longitude)):.4f}\n"
+                    if 'latitude' in place and 'longitude' in place and place.latitude and place.longitude:
+                        text += "3 MAP\n"
+                        text += f"4 LATI {'N' if float(place.latitude) > 0 else 'S'}{abs(float(place.latitude)):.4f}\n"
+                        text += f"4 LONG {'E' if float(place.longitude) > 0 else 'W'}{abs(float(place.longitude)):.4f}\n"
 
         return text
 
@@ -179,6 +179,21 @@ class GFamily(GBase):
         Property to get the list of childs' reference of the family
         """
         return self._family.childsref
+
+    # -------------------------------------------------------------------------
+    # places
+    # -------------------------------------------------------------------------
+    @property
+    def places(self):
+        """
+        Property to get the places for the individual
+        """
+        places = {}
+        for key, value in self._family.data.items():
+            if key.find('place') >= 0 and value is not None:
+                places[value.name] = value
+
+        return places
 
     # -------------------------------------------------------------------------
     # gedcom
@@ -434,6 +449,21 @@ class GIndividual(GBase):
             return self._parser.html
         else:
             return ""
+
+    # -------------------------------------------------------------------------
+    # places
+    # -------------------------------------------------------------------------
+    @property
+    def places(self):
+        """
+        Property to get the places for the individual
+        """
+        places = {}
+        for key, value in self._individual.data.items():
+            if key.find('place') >= 0 and value is not None:
+                places[value.name] = value
+
+        return places
 
     # -------------------------------------------------------------------------
     # gedcom
@@ -705,9 +735,6 @@ class Genealogy(GBase):
 
         gedcom = gedcom + "0 TRLR"
 
-        if self._parser:
-            self._parser.save()
-
         return gedcom
 
     # -------------------------------------------------------------------------
@@ -729,6 +756,18 @@ class Genealogy(GBase):
 
         for family in self._families.values():
             family.print(short=False)
+
+        places = {}
+        for individual in self._individuals.values():
+            for key, value in individual.places.items():
+                if key not in places:
+                    places[key] = value
+        for family in self._families.values():
+            for key, value in family.places.items():
+                if key not in places:
+                    places[key] = value
+
+        display(places, title="Places")
 
     # -------------------------------------------------------------------------
     # html

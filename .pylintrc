@@ -2,4 +2,6 @@
 max-line-length=132
 
 [MESSAGES CONTROL]
+# C0301 is max length
+# W0718 is generic exception
 disable=C0301,W0718
