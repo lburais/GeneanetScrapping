@@ -202,7 +202,8 @@ def main():
         else:
 
             searchedindividuals = [
-                'https://gw.geneanet.org/plongeur?p=michel&n=de+la+rue&oc=1',               # place
+                'https://gw.geneanet.org/lipari?p=marie&n=mosnier',                         # date None
+                'https://gw.geneanet.org/plongeur?p=maud&n=de+ingelric',                    # place length
                 'https://gw.geneanet.org/lipari?p=desire+antonin&n=bessey'                  # place paris 15
             ]
     else:

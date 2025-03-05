@@ -25,37 +25,12 @@ Package to process Geneanet pages
 
 import re
 from collections import namedtuple
-import sys
-import os
 import urllib
-import base64
 
 # https://pypi.org/project/beautifulsoup4/
 # pip3 install bs4
 
 from bs4 import BeautifulSoup, Comment
-
-# https://pypi.org/project/babel/
-# pip3 install babel
-import babel
-import babel.dates
-
-# https://pypi.org/project/selenium/
-# pip3 install selenium
-
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.common.exceptions import TimeoutException
-
-#
-# https://geopy.readthedocs.io/en/stable/
-# https://pypi.org/project/geopy/
-# pip3 install geopy
-# import geopy
 
 # -------------------------------------------------------------------------
 #
@@ -63,8 +38,8 @@ from selenium.common.exceptions import TimeoutException
 #
 # -------------------------------------------------------------------------
 
-from common import display, get_folder
-from objects import Informations, Individual, Family, Place
+from common import display, get_folder, load_chrome
+from objects import Informations, Individual, Family, Place, Date
 
 # -------------------------------------------------------------------------
 #
@@ -100,7 +75,7 @@ class Geneanet:
             else:
                 output_file = self.clean_query(url).replace('=', "_").replace('+', " ").replace('&', ".")
 
-            output_txt = output_folder / (output_file + ".txt")
+            output_file = output_folder / (output_file + ".txt")
 
             # force fr language
 
@@ -113,114 +88,128 @@ class Geneanet:
             else:
                 url = url + "?lang=fr"
 
-            if force is True or not output_txt.exists():
+            self._html = load_chrome(url, output_file, force)
 
-                display(f'Load from {url}')
+            # if force is True or not output_txt.exists():
 
-                output_pdf = output_folder / (output_file + ".pdf")
+            #     display(f'Load from {url}')
 
-                self._html = None
-                headless = urllib.parse.urlparse(url).scheme == 'file'
+            #     output_pdf = output_folder / (output_file + ".pdf")
 
-                try:
-                    # Chrome setup
+            #     self._html = None
+            #     headless = urllib.parse.urlparse(url).scheme == 'file'
 
-                    chrome_options = webdriver.ChromeOptions()
-                    if headless:
-                        chrome_options.add_argument("--headless")  # Headless mode to avoid opening a browser window
-                    chrome_options.add_argument("--kiosk-printing")  # Enables silent printing
-                    chrome_options.add_argument("--disable-gpu")  # Disables GPU acceleration (helpful in some cases)
+            #     try:
+            #         # Chrome setup
 
-                    # Configure Chrome print settings to save as PDF
-                    output_pdf.parent.mkdir(parents=True, exist_ok=True)
-                    output_pdf.unlink(missing_ok=True)
+            #         chrome_options = webdriver.ChromeOptions()
+            #         if headless:
+            #             chrome_options.add_argument("--headless")  # Headless mode to avoid opening a browser window
+            #         chrome_options.add_argument("--kiosk-printing")  # Enables silent printing
+            #         chrome_options.add_argument("--disable-gpu")  # Disables GPU acceleration (helpful in some cases)
 
-                    chrome_options.add_experimental_option("prefs", {
-                        "printing.print_preview_sticky_settings.appState": '{"recentDestinations":[{"id":"Save as PDF","origin":"local"}],"selectedDestinationId":"Save as PDF","version":2}',
-                        "savefile.default_directory": str(output_pdf)
-                    })
+            #         # Configure Chrome print settings to save as PDF
+            #         output_pdf.parent.mkdir(parents=True, exist_ok=True)
+            #         output_pdf.unlink(missing_ok=True)
 
-                    service = Service()  # No need to specify path if using Selenium 4.6+
-                    browser = webdriver.Chrome(service=service, options=chrome_options)
+            #         chrome_options.add_experimental_option("prefs", {
+            #             "printing.print_preview_sticky_settings.appState": '{"recentDestinations":[{"id":"Save as PDF","origin":"local"}],"selectedDestinationId":"Save as PDF","version":2}',
+            #             "savefile.default_directory": str(output_pdf)
+            #         })
 
-                    # let's go browse
+            #         service = Service()  # No need to specify path if using Selenium 4.6+
+            #         browser = webdriver.Chrome(service=service, options=chrome_options)
 
-                    browser.get(url)
+            #         # let's go browse
 
-                    if not headless:
+            #         browser.get(url)
 
-                        # wait for button click
+            #         if not headless:
 
-                        try:
-                            consent_button = WebDriverWait(browser, 20).until(
-                                EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
-                            )
-                            ActionChains(browser).move_to_element(consent_button).click().perform()
-                        except TimeoutException:
-                            pass
-                        except Exception as e:
-                            display(f"Clickable: {type(e).__name__}", error=True)
+            #             # wait for button click
 
-                    # Process PDF
-                    try:
-                        # Use Chrome DevTools Protocol (CDP) to print as PDF
-                        pdf_settings = {
-                            "landscape": False,
-                            "paperWidth": 8.5,
-                            "paperHeight": 11,
-                            "displayHeaderFooter": True,
-                            "printBackground": False
-                        }
+            #             try:
+            #                 consent_button = WebDriverWait(browser, 20).until(
+            #                     EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
+            #                 )
+            #                 ActionChains(browser).move_to_element(consent_button).click().perform()
+            #             except TimeoutException:
+            #                 pass
+            #             except Exception as e:
+            #                 display(f"Clickable: {type(e).__name__}", error=True)
 
-                        # Execute CDP command to save as PDF
-                        pdf_data = browser.execute_cdp_cmd("Page.printToPDF", pdf_settings)
+            #         # Process PDF
+            #         try:
+            #             # Use Chrome DevTools Protocol (CDP) to print as PDF
+            #             pdf_settings = {
+            #                 "landscape": False,
+            #                 "paperWidth": 8.5,
+            #                 "paperHeight": 11,
+            #                 "displayHeaderFooter": True,
+            #                 "printBackground": False
+            #             }
 
-                        # Save PDF to file
-                        output_pdf.write_bytes(base64.b64decode(pdf_data["data"]))
-                    except Exception as e:
-                        display(f"Save PDF: {type(e).__name__}", error=True)
-                        display(f'Failed to save PDF: {output_pdf}', error=True)
+            #             # Execute CDP command to save as PDF
+            #             pdf_data = browser.execute_cdp_cmd("Page.printToPDF", pdf_settings)
 
-                    # Get HTML
+            #             # Save PDF to file
+            #             output_pdf.write_bytes(base64.b64decode(pdf_data["data"]))
+            #         except Exception as e:
+            #             display(f"Save PDF: {type(e).__name__}", error=True)
+            #             display(f'Failed to save PDF: {output_pdf}', error=True)
 
-                    self._html = browser.page_source
+            #         # Get HTML
 
-                except Exception as e:
-                    exc_type, exc_obj, exc_tb = sys.exc_info()
-                    message = f'Exception {e} [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
-                    display(message, error=True)
-                    display(message, exception=True)
+            #         self._html = browser.page_source
 
-                if browser:
-                    browser.quit()
+            #     except Exception as e:
+            #         exc_type, exc_obj, exc_tb = sys.exc_info()
+            #         message = f'Exception {e} [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
+            #         display(message, error=True)
+            #         display(message, exception=True)
 
-                # Get content in perso bloc
+            #     if browser:
+            #         browser.quit()
 
-                soup = BeautifulSoup(self._html, 'html.parser')
-                self._html = soup.find("div", {"id": "perso"})
+            #     # Get content in perso bloc
 
-                if not self._html:
-                    self._html = soup.find("div", {"id": "content"})
+            #     soup = BeautifulSoup(self._html, 'html.parser')
+            #     self._html = soup.find("div", {"id": "perso"})
 
-                # process perso
+            #     if not self._html:
+            #         self._html = soup.find("div", {"id": "content"})
 
-                try:
-                    output_txt.unlink(missing_ok=True)
-                    output_txt.write_text(self._html.prettify())
-                except Exception as e:
-                    display(f"Save HTML: {type(e).__name__}", error=True)
-                    display(f'Failed to save HTML: {output_txt}', error=True)
+            #     # process perso
 
-            else:
-                display(f'Read from {output_txt}')
-                self._html = BeautifulSoup(output_txt.read_text(), 'html.parser')
+            #     try:
+            #         output_txt.unlink(missing_ok=True)
+            #         output_txt.write_text(self._html.prettify())
+            #     except Exception as e:
+            #         display(f"Save HTML: {type(e).__name__}", error=True)
+            #         display(f'Failed to save HTML: {output_txt}', error=True)
+
+            # else:
+            #     display(f'Read from {output_txt}')
+            #     self._html = BeautifulSoup(output_txt.read_text(), 'html.parser')
+
+            # Get content in perso bloc
+
+            soup = BeautifulSoup(self._html, 'html.parser')
+            self._html = soup.find("div", {"id": "perso"})
+
+            if not self._html:
+                self._html = soup.find("div", {"id": "content"})
+
+            # process perso
+
+            try:
+                output_file.unlink(missing_ok=True)
+                output_file.write_text(self._html.prettify())
+            except Exception as e:
+                display(f"Failed to save [{output_file}]: {type(e).__name__}", exception=True)
 
         except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            message = f'Exception {e} [{exc_type} - {exc_obj}] ' + \
-                      f'in {exc_tb.tb_frame.f_code.co_name} ' + \
-                      f'at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
-            display(message, error=True)
+            display(f"_load: {type(e).__name__}", exception=True)
             self._html = None
 
         return self._html
@@ -268,9 +257,7 @@ class Geneanet:
                 comment.extract()
 
         except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            message = f'Exception {e} [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
-            display(message, error=True)
+            display(f"_read: {type(e).__name__}", exception=True)
 
         return contents
 
@@ -290,12 +277,12 @@ class Geneanet:
 
             try:  # first date
 
-                date = self._convert_date(event.group('date').strip().split())
+                date = Date(event.group('date').strip().split())
 
             except (IndexError, ValueError):
                 try:  # second date
 
-                    date = self._convert_date(event.group('alt').strip().split())
+                    date = Date(event.group('alt').strip().split())
 
                 except (IndexError, ValueError, AttributeError):
                     pass
@@ -327,98 +314,6 @@ class Geneanet:
             display(f"{key.upper()}: {type(e).__name__}", error=True)
 
         return exist, date, place
-
-    # -------------------------------------------------------------------------
-    # _convert_date
-    # -------------------------------------------------------------------------
-
-    def _convert_date(self, datetab):
-        """
-        Function to convert a french date to GEDCOM date
-        """
-
-        convert = {
-            'ca': 'ABT',
-            'vers': 'ABT',
-            'à propos': 'ABT',
-            'estimé': 'EST',
-            'après': 'AFT',
-            'avant': 'BEF',
-            'entre': 'BET',
-            'et': 'AND'
-        }
-
-        try:
-            if len(datetab) == 0:
-                return None
-
-            idx = 0
-
-            # clean
-            datetab = [v.strip() for v in datetab]
-
-            # Assuming there is just a year and last element is the year
-
-            if len(datetab) == 1 or datetab[0] == 'en':
-                # avoid a potential month
-                # if datetab[-1].isalpha():
-                #     return datetab[-1][0:4]
-
-                # avoid a potential , after the year
-                # elif datetab[-1].isnumeric():
-                if datetab[-1].isnumeric():
-                    return datetab[-1][0:4]
-
-            # Between date
-
-            if datetab[0] == 'entre':
-                try:
-                    index = datetab.index("et")
-                    return convert[datetab[0]] + " " + self._convert_date(datetab[1:index]) + " " + convert[datetab[index]] + " " + self._convert_date(datetab[index + 1:])
-                except ValueError:
-                    pass
-
-            # Having prefix
-
-            if datetab[0] in convert:
-                return convert[datetab[0]] + " " + self._convert_date(datetab[1:])
-
-            # Skip 'le' prefix
-
-            if datetab[0] == 'le':
-                idx = 1
-
-            # In case of french language remove the 'er' prefix
-
-            if datetab[idx] == "1er":
-                datetab[idx] = "1"
-
-            months = dict(babel.dates.get_month_names(width='wide', locale='fr'))
-
-            # Just month and year
-            if datetab[idx].lower() in months.values():
-                bd1 = "1" + " " + str(list(months.keys())[list(months.values()).index(datetab[idx])]) + " " + datetab[idx + 1][0:4]
-                bd2 = babel.dates.parse_date(bd1, locale='fr')
-                return bd2.strftime("%b %Y").upper()
-
-            try:
-                # day month year
-                bd1 = datetab[idx] + " " + str(list(months.keys())[list(months.values()).index(datetab[idx + 1])]) + " " + datetab[idx + 2][0:4]
-                bd2 = babel.dates.parse_date(bd1, locale='fr')
-            except ValueError:
-                # day monthnum year
-                bd1 = datetab[idx] + " " + datetab[idx + 1] + " " + datetab[idx + 2][0:4]
-                bd2 = babel.dates.parse_date(bd1, locale='fr')
-            except IndexError:
-                pass
-            except Exception as e:
-                display(f"Convert date: {type(e).__name__}", error=True)
-
-            return bd2.strftime("%d %b %Y").upper()
-
-        except Exception as e:
-            display(f"Date error ({type(e).__name__}): {' '.join(datetab)}", error=True)
-            raise ValueError from e
 
     # -------------------------------------------------------------------------
     # _scrap_notes
@@ -820,9 +715,7 @@ class Geneanet:
                         display(f"Add processing for section: {section.name}")
 
         except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            message = f'Exception {e} [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
-            display(message, error=True)
+            display(f"Failed to scrap [{url}]: {type(e).__name__}", exception=True)
 
         return person
 
@@ -849,15 +742,13 @@ class Geneanet:
                 infos.author = perso.select("div[class*='info-auteur']")[0].find("strong").get_text().strip()
                 infos.nbindividuals = int(re.sub(r'\D', '', perso.select("span[class*='stats-number']")[0].get_text()))
                 infos.lastchange = [p for p in perso.select("p[class*='text-light']") if 'Dernière' in p.get_text()][0]
-                infos.lastchange = self._convert_date(infos.lastchange.find("span").get_text().split('/'))
+                infos.lastchange = Date(infos.lastchange.find("span").get_text().split('/'))
                 infos.source = "Geneanet"
 
                 display(infos, title="Informations")
 
         except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            message = f'{e} within scrapping [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
-            display(message, error=True)
+            display(f"Failed to info [{url}]: {type(e).__name__}", exception=True)
 
         return infos
 
