@@ -63,7 +63,7 @@ class GBase():
         for event in events:
             if event[1] in data and data[event[1]]:
                 text += f"1 {event[0]}\n"
-                if f"{event[1]}date" in data and data[f"{event[1]}date"]:
+                if f"{event[1]}date" in data and data[f"{event[1]}date"] is not None:
                     text += f"2 DATE {data[f'{event[1]}date']}\n"
                 if f"{event[1]}place" in data and data[f"{event[1]}place"]:
                     place = data[f'{event[1]}place']
@@ -76,14 +76,31 @@ class GBase():
         return text
 
     # -------------------------------------------------------------------------
+    # _shorten_place
+    # -------------------------------------------------------------------------
+
+    def _shorten_place(self, place):
+        """
+        Remove address
+        """
+
+        place = {key: value for key, value in place.items() if key != 'address' and key != 'search'}
+
+        return place
+
+    # -------------------------------------------------------------------------
     # _shorten_data
     # -------------------------------------------------------------------------
 
-    def _shorten_data(self, data):
+    def _shorten_data(self, data, short):
+        """
+        Remove items that are None or empty list
+        """
 
-        data = {key: value for key, value in data.items() if value is not None}
+        if short:
+            data = {key: value for key, value in data.items() if value is not None}
 
-        data = {key: value for key, value in data.items() if not (isinstance(value, list) and len(value) == 0)}
+            data = {key: value for key, value in data.items() if not (isinstance(value, list) and len(value) == 0)}
 
         return data
 
@@ -91,16 +108,26 @@ class GBase():
     # _shorten_event
     # -------------------------------------------------------------------------
 
-    def _shorten_event(self, data, keys):
+    def _shorten_event(self, data, keys, short):
+        """
+        Remove elements that are None or useless (no event)
+        """
 
-        for key in keys:
-            if key in data:
+        if short:
+            for key in keys:
+                if key in data:
 
-                if data[key] is False:
-                    del data[key]
+                    if data[key] is False:
+                        del data[key]
 
-                elif not data[f"{key}date"] or not data[f"{key}place"] is None:
-                    del data[key]
+                    elif not data[f"{key}date"] or not data[f"{key}place"] is None:
+                        del data[key]
+        else:
+            for key in keys:
+                if key in data:
+
+                    if not data[f"{key}place"] is None:
+                        data[f"{key}place"] = self._shorten_place(data[f"{key}place"].copy())
 
         return data
 
@@ -186,14 +213,19 @@ class GFamily(GBase):
     @property
     def places(self):
         """
-        Property to get the places for the individual
+        All places
         """
-        places = {}
-        for key, value in self._family.data.items():
-            if key.find('place') >= 0 and value is not None:
-                places[value.name] = value
+        return {value.name: value for key, value in self._family.data.items() if key.find('place') >= 0 and value is not None }
 
-        return places
+    # -------------------------------------------------------------------------
+    # dates
+    # -------------------------------------------------------------------------
+    @property
+    def dates(self):
+        """
+        All dates
+        """
+        return sorted(set([value for key, value in self._family.data.items() if key.find('date') >= 0 and value is not None]))
 
     # -------------------------------------------------------------------------
     # gedcom
@@ -235,12 +267,8 @@ class GFamily(GBase):
         Function to print the family
         """
 
-        if short:
-            p = self._shorten_event(self._family.data.copy(), ['marriage', 'divorce'])
-            p = self._shorten_data(p.copy())
-
-        else:
-            p = self._family.copy()
+        p = self._shorten_event(self._family.data.copy(), ['marriage', 'divorce'], short)
+        p = self._shorten_data(p.copy(), short)
 
         display(p, title=f"Family: {self._family.spousesref}")
 
@@ -456,14 +484,19 @@ class GIndividual(GBase):
     @property
     def places(self):
         """
-        Property to get the places for the individual
+        All places
         """
-        places = {}
-        for key, value in self._individual.data.items():
-            if key.find('place') >= 0 and value is not None:
-                places[value.name] = value
+        return {value.name: value for key, value in self._individual.data.items() if key.find('place') >= 0 and value is not None }
 
-        return places
+    # -------------------------------------------------------------------------
+    # dates
+    # -------------------------------------------------------------------------
+    @property
+    def dates(self):
+        """
+        All dates
+        """
+        return sorted(set([value for key, value in self._individual.data.items() if key.find('date') >= 0 and value is not None]))
 
     # -------------------------------------------------------------------------
     # gedcom
@@ -551,18 +584,15 @@ class GIndividual(GBase):
         Function to print the individual
         """
 
-        if short:
-            p = self._shorten_event(self._individual.data.copy(), ['birth', 'death', 'baptem', 'burial'])
-            p = self._shorten_data(p.copy())
+        p = self._shorten_event(self._individual.data.copy(), ['birth', 'death', 'baptem', 'burial'], short)
+        p = self._shorten_data(p.copy(), short)
 
+        if short:
             if 'notes' in p:
                 if len(p['notes']) > 0:
                     p['notes'] = len(p['notes'])
                 else:
                     del p['notes']
-
-        else:
-            p = self._individual.copy()
 
         display(p, title=f"Individual: {self._individual.ref}")
 
@@ -666,13 +696,11 @@ class Genealogy(GBase):
     # gedcom
     # -------------------------------------------------------------------------
 
+    @property
     def gedcom(self):
         """
         Function to get the GEDCOM of the genealogy
         """
-
-        display("")
-        display("GEDCOM", level=2)
 
         # set gedcom id
         individuals_table = {key: f"I{index + 1:05d}" for index, key in enumerate(self._individuals)}
@@ -738,6 +766,48 @@ class Genealogy(GBase):
         return gedcom
 
     # -------------------------------------------------------------------------
+    # places
+    # -------------------------------------------------------------------------
+
+    @property
+    def places(self):
+        """
+        Function to get all places
+        """
+
+        places = {}
+        for individual in self._individuals.values():
+            for key, value in individual.places.items():
+                if key not in places:
+                    places[key] = value
+        for family in self._families.values():
+            for key, value in family.places.items():
+                if key not in places:
+                    places[key] = value
+
+        return places
+
+    # -------------------------------------------------------------------------
+    # dates
+    # -------------------------------------------------------------------------
+
+    @property
+    def dates(self):
+        """
+        Function to get all places
+        """
+
+        dates = []
+        for individual in self._individuals.values():
+            dates += [value for value in individual.dates if value is not None]
+        for family in self._families.values():
+            dates += [value for value in family.dates if value is not None]
+
+        dates = sorted(set(dates))
+
+        return dates
+
+    # -------------------------------------------------------------------------
     # print
     # -------------------------------------------------------------------------
 
@@ -756,18 +826,6 @@ class Genealogy(GBase):
 
         for family in self._families.values():
             family.print(short=False)
-
-        places = {}
-        for individual in self._individuals.values():
-            for key, value in individual.places.items():
-                if key not in places:
-                    places[key] = value
-        for family in self._families.values():
-            for key, value in family.places.items():
-                if key not in places:
-                    places[key] = value
-
-        display(places, title="Places")
 
     # -------------------------------------------------------------------------
     # html

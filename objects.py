@@ -100,6 +100,12 @@ class Place(_object):
             'fullname': where,
         }
 
+        defaults = self._place_geonames(defaults)
+        #defaults = self._place_nominatim(defaults)
+
+        super().__init__(defaults, *args, **kwargs)
+
+    def _place_nominatim(self, defaults):
         try:
             # Nomatim
             # https://nominatim.org
@@ -117,14 +123,14 @@ class Place(_object):
             # try first structured query
 
             # if last element is a country (ISO code exist)
-            if pycountry.countries.get(name=where.split(',')[-1].strip()):
-                defaults_search['country'] = where.split(',')[-1].strip()
+            if pycountry.countries.get(name=defaults['name'].split(',')[-1].strip()):
+                defaults_search['country'] = defaults['name'].split(',')[-1].strip()
 
                 # first one is the city (if not a country)
-                if where.split(',')[0].strip() != defaults_search['country']:
-                    defaults_search['city'] = where.split(',')[0].strip()
+                if defaults['name'].split(',')[0].strip() != defaults_search['country']:
+                    defaults_search['city'] = defaults['name'].split(',')[0].strip()
             else:
-                defaults_search['q'] = where
+                defaults_search['q'] = defaults['name']
 
             defaults['search'] = defaults_search
 
@@ -156,11 +162,55 @@ class Place(_object):
             else:
                 display(f'!! Nominatim cannot fetch data for ({where}) [{response.status_code}]: {response.text}')
 
-            # place.featureType = 'suburb'
         except Exception as e:
-            display(f"get place - {where}: {type(e).__name__}", error=True)
+            display(f"Nomatim get place - {where}: {type(e).__name__}", error=True)
 
-        super().__init__(defaults, *args, **kwargs)
+        return defaults
+
+    def _place_geonames(self, defaults):
+        try:
+            # GeoNames
+            # https://
+            geonames_url = "http://api.geonames.org/searchJSON"
+
+            defaults_search = {
+                'maxRows': 1, 
+                'username': 'lburais',  # genealogy_scrapper
+                'style': 'full',
+                'lang': 'fr'        ,
+                'featureClass': 'P',   
+                'featureCode': 'PPL',   
+            }
+
+            # try first structured query
+
+            # if last element is a country (ISO code exist)
+            names = defaults['name'].split(',')
+            code = pycountry.countries.get(name=names[-1].strip())
+            if code:
+                defaults_search['country'] = code.alpha_2
+
+                # first one is the city (if not a country)
+                if len(names) > 1:
+                    defaults_search['q'] = names[0].strip()
+            else:
+                defaults_search['q'] = defaults['name']
+
+            defaults['search'] = defaults_search
+
+            response = requests.get(geonames_url, params=defaults_search, timeout=10)
+
+            if response.status_code == 200:
+                if len(response.json()) > 0:
+                    display(response.json())
+
+            else:
+                display(f'!! GeoNames cannot fetch data for ({defaults['name']}) [{response.status_code}]: {response.text}')
+
+        except Exception as e:
+            display(f"GeoNames get place - {defaults['name']}: {type(e).__name__}", error=True)
+
+        return defaults
 
 # --------------------------------------------------------------------------------------------------
 #
@@ -287,7 +337,7 @@ class Date(str):
 
         try:
             if len(datetab) == 0:
-                return None
+                return ''
 
             idx = 0
 

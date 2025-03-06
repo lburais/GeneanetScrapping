@@ -40,11 +40,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException
 
-# https://pypi.org/project/weasyprint/
-# pip3 install weasyprint
-# from weasyprint import HTML
-
 # https://wkhtmltopdf.org
+# download and install
 # https://pypi.org/project/pdfkit/
 # pip3 install pdfkit
 import pdfkit
@@ -89,7 +86,9 @@ def display(what=None, title=None, level=0, error=False, exception=False):
 
     try:
         if isinstance(what, list):
-            pprint(what)
+            if title:
+                console.print('\n', Panel(Text(title), style="green"))
+            console.print(Pretty(what))
 
         elif isinstance(what, dict):
 
@@ -154,122 +153,26 @@ def console_save(output):
 
     content = console.export_html(inline_styles=True)
 
-    # start_time = datetime.now()
-    # display(f"Writing weasyprint {len(content):,} bytes to {str(output)}.pdf at {start_time.strftime('%H:%M:%S')}...")
-
-    # console_save_weasyprint(output, content)
-
-    # duration = (datetime.now() - start_time).total_seconds()
-    # display(f"... completed in {duration:.2f}s\n")
-
-    # start_time = datetime.now()
-    # display(f"Writing selenium {len(content):,} bytes to {str(output)}.pdf at {start_time.strftime('%H:%M:%S')}...")
-
-    # console_save_selenium(output, content)
-
-    # duration = (datetime.now() - start_time).total_seconds()
-    # display(f"... completed in {duration:.2f}s\n")
-
-    start_time = datetime.now()
-    display(f"Writing pdfkit {len(content):,} bytes to {str(output)}.pdf at {start_time.strftime('%H:%M:%S')}...")
-
-    console_save_pdfkit(output, content)
-
-    duration = (datetime.now() - start_time).total_seconds()
-    display(f"... completed in {duration:.2f}s\n")
-
-    console._record_buffer = []
-
-
-# ---------------------------------------------------------------------------------------------------------------------------------
-# console_save_pdfkit
-# ---------------------------------------------------------------------------------------------------------------------------------
-
-
-def console_save_pdfkit(output, content):
-    """
-    Function to save text from Rich console into a PDF file
-    """
-
     output_file = Path(output).resolve().with_suffix(".pdf")
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.unlink(missing_ok=True)
 
+    start_time = datetime.now()
+    display(f"Writing pdfkit {len(content):,} bytes to {str(output_file.relative_to(Path(get_folder())))} at {start_time.strftime('%H:%M:%S')}...")
+
     options = {
-    'orientation': 'landscape',  # Set the orientation to landscape
-    'page-size': 'A4',  # Optional: Page size
-    'encoding': 'UTF-8'  # Make sure to set encoding to UTF-8
+    'orientation': 'landscape',     # Set the orientation to landscape
+    'page-size': 'A4',              # Optional: Page size
+    'encoding': 'UTF-8',            # Make sure to set encoding to UTF-8
+    'dpi': 72,                      # Reduces the DPI for lower quality but smaller file size
     }
 
     pdfkit.from_string(content, str(output_file), options=options)
 
-# ---------------------------------------------------------------------------------------------------------------------------------
-# console_save_weasyprint
-# ---------------------------------------------------------------------------------------------------------------------------------
+    duration = (datetime.now() - start_time).total_seconds()
+    display(f"... completed in {duration:,.2f}s\n")
 
-
-# def console_save_weasyprint(output, html):
-#     """
-#     Function to save text from Rich console into a PDF file
-#     """
-
-#     output_file = Path(output).resolve().with_suffix(".pdf")
-#     output_file.parent.mkdir(parents=True, exist_ok=True)
-#     output_file.unlink(missing_ok=True)
-
-#     print_options = """<head>
-#         <style>
-#             @page {
-#                 size: A4 landscape;
-#                 margin: 0.25in;
-#             }
-#             body {
-#                 font-family: Courier, monospace;
-#                 font-size: 10pt;
-#             }
-#     """
-
-#     html = html.replace("<head>", print_options)
-
-#     HTML(string=html).write_pdf(str(output_file))
-
-# ---------------------------------------------------------------------------------------------------------------------------------
-# console_save_selenium
-# ---------------------------------------------------------------------------------------------------------------------------------
-
-
-# def console_save_selenium(output, html):
-#     """
-#     Function to save text from Rich console into a PDF file
-#     """
-
-#     output_file = Path(output).resolve().with_suffix(".pdf")
-#     output_file.parent.mkdir(parents=True, exist_ok=True)
-#     output_file.unlink(missing_ok=True)
-
-#     output_html = Path(output).resolve().with_suffix(".html")
-#     output_html.parent.mkdir(parents=True, exist_ok=True)
-#     output_html.unlink(missing_ok=True)
-
-#     print_options = """<head>
-#         <style>
-#             @page {
-#                 size: A4 landscape;
-#                 margin: 0.25in;
-#             }
-#             body {
-#                 font-family: Courier, monospace;
-#                 font-size: 10pt;
-#             }
-#     """
-
-#     html = html.replace("<head>", print_options)
-
-#     output_html.write_text(html, encoding="utf-8")
-
-#     load_chrome(f"file://{output_html.absolute()}", output_file, force=True)
-
-#     output_html.unlink(missing_ok=True)
+    console._record_buffer = []
 
 # -------------------------------------------------------------------------
 # load_chrome

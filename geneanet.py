@@ -313,6 +313,9 @@ class Geneanet:
         except Exception as e:
             display(f"{key.upper()}: {type(e).__name__}", error=True)
 
+        if date == '':
+            date = None
+
         return exist, date, place
 
     # -------------------------------------------------------------------------

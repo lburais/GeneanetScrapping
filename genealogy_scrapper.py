@@ -29,6 +29,7 @@ import re
 import argparse
 import subprocess
 import urllib
+from datetime import datetime
 
 import pygedcom
 
@@ -108,7 +109,7 @@ def genealogy_scrapping(individuals, ascendants=False, descendants=False, spouse
             gedcom_file.parent.mkdir(parents=True, exist_ok=True)
             gedcom_file.unlink(missing_ok=True)
 
-            gedcom = genealogy.gedcom()
+            gedcom = genealogy.gedcom
 
             gedcom_file.write_text(gedcom)
 
@@ -124,11 +125,29 @@ def genealogy_scrapping(individuals, ascendants=False, descendants=False, spouse
             else:
                 display(check['message'], title=f"Your {str(gedcom_file)} file is not valid")
 
-            # Save Rich output
+            # Save logs
 
             display("")
 
             console_save(root_folder / f"{userid}" / "logs")
+
+            # Save places
+
+            display("")
+
+            places = genealogy.places
+            display(places, title=f"Places [{len(places)}]")
+
+            console_save(root_folder / f"{userid}" / "places")
+
+            # Save dates
+
+            display("")
+
+            dates = genealogy.dates
+            display(dates, title=f"Dates [{len(dates)}]")
+
+            console_save(root_folder / f"{userid}" / "dates")
 
             # Save outcome
 
@@ -204,7 +223,8 @@ def main():
             searchedindividuals = [
                 'https://gw.geneanet.org/lipari?p=marie&n=mosnier',                         # date None
                 'https://gw.geneanet.org/plongeur?p=maud&n=de+ingelric',                    # place length
-                'https://gw.geneanet.org/lipari?p=desire+antonin&n=bessey'                  # place paris 15
+                'https://gw.geneanet.org/lipari?p=desire+antonin&n=bessey',                 # place paris 15
+                'https://gw.geneanet.org/iraird?p=charles+i&n=de+heristal',                 # place length
             ]
     else:
         searchedindividuals = [args.searchedindividual]
@@ -228,4 +248,12 @@ def main():
 
 
 if __name__ == '__main__':
+
+    start_time = datetime.now()
+
     main()
+
+    display(f"Start at {start_time.strftime('%H:%M:%S')}...")
+    display(f"End at   {start_time.strftime('%H:%M:%S')}...")
+    duration = (datetime.now() - start_time).total_seconds()
+    display(f"In       {duration:,.2f}s\n")
