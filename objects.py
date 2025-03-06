@@ -160,10 +160,10 @@ class Place(_object):
                         defaults['website'] = response.json()[0]['extratags']['website']
 
             else:
-                display(f'!! Nominatim cannot fetch data for ({where}) [{response.status_code}]: {response.text}')
+                display(f'!! Nominatim cannot fetch data for ({defaults['name']}) [{response.status_code}]: {response.text}')
 
         except Exception as e:
-            display(f"Nomatim get place - {where}: {type(e).__name__}", error=True)
+            display(f"Nomatim get place - {defaults['name']}: {type(e).__name__}", error=True)
 
         return defaults
 
