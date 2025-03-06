@@ -100,93 +100,35 @@ class Place(_object):
             'fullname': where,
         }
 
-        defaults = self._place_geonames(defaults)
-        #defaults = self._place_nominatim(defaults)
-
-        super().__init__(defaults, *args, **kwargs)
-
-    def _place_nominatim(self, defaults):
-        try:
-            # Nomatim
-            # https://nominatim.org
-            # https://nominatim.org/release-docs/develop/api/Search/
-            nominatim_url = "https://nominatim.openstreetmap.org/search"
-
-            defaults_search = {
-                'format': 'json',
-                'limit': 10,
-                'addressdetails': 1,
-                'extratags': 1,
-                'layer': 'address',
-            }
-
-            # try first structured query
-
-            # if last element is a country (ISO code exist)
-            if pycountry.countries.get(name=defaults['name'].split(',')[-1].strip()):
-                defaults_search['country'] = defaults['name'].split(',')[-1].strip()
-
-                # first one is the city (if not a country)
-                if defaults['name'].split(',')[0].strip() != defaults_search['country']:
-                    defaults_search['city'] = defaults['name'].split(',')[0].strip()
-            else:
-                defaults_search['q'] = defaults['name']
-
-            defaults['search'] = defaults_search
-
-            headers = {
-                'User-Agent': 'genealogy-scapper/1.0',
-                'Accept-Language': 'fr',
-            }
-
-            response = requests.get(nominatim_url, headers=headers, params=defaults['search'], timeout=10)
-
-            if response.status_code == 200:
-                if len(response.json()) > 0:
-
-                    for loc in response.json():
-                        display(f"[{response.json().index(loc):2d}] {loc['addresstype']}: {loc['type']}: {loc['display_name']}")
-
-                    defaults['fullname'] = response.json()[0]['display_name']
-                    defaults['latitude'] = response.json()[0]['lat']
-                    defaults['longitude'] = response.json()[0]['lon']
-                    defaults['addresstype'] = response.json()[0]['addresstype']
-                    defaults['address'] = response.json()[0]['address']
-                    if 'wikidata' in response.json()[0]['extratags']:
-                        defaults['wikidata'] = f"https://www.wikidata.org/wiki/{response.json()[0]['extratags']['wikidata']}"
-                    if 'wikipedia' in response.json()[0]['extratags']:
-                        defaults['wikipedia'] = f"https://fr.wikipedia.org/wiki/{response.json()[0]['extratags']['wikipedia']}"
-                    if 'website' in response.json()[0]['extratags']:
-                        defaults['website'] = response.json()[0]['extratags']['website']
-
-            else:
-                display(f'!! Nominatim cannot fetch data for ({defaults['name']}) [{response.status_code}]: {response.text}')
-
-        except Exception as e:
-            display(f"Nomatim get place - {defaults['name']}: {type(e).__name__}", error=True)
-
-        return defaults
-
-    def _place_geonames(self, defaults):
         try:
             # GeoNames
-            # https://
+            # https://www.geonames.org
             geonames_url = "http://api.geonames.org/searchJSON"
 
             defaults_search = {
-                'maxRows': 1, 
-                'username': 'lburais',  # genealogy_scrapper
+                'username': 'lburais',  
+                # 'username': 'genealogy_scrapper',
+                'maxRows': 10, 
                 'style': 'full',
                 'lang': 'fr'        ,
                 'featureClass': 'P',   
-                'featureCode': 'PPL',   
+                'isNameRequired': True,
+
             }
 
             # try first structured query
 
             # if last element is a country (ISO code exist)
             names = defaults['name'].split(',')
-            code = pycountry.countries.get(name=names[-1].strip())
+
+            # import gettext
+            # french = gettext.translation('iso3166-1', pycountry.LOCALES_DIR, languages=['fr'])
+            # french.install()
+            # country = _(names[-1].strip())
+
+            country = names[-1].strip()
+
+            code = pycountry.countries.get(name=country)
             if code:
                 defaults_search['country'] = code.alpha_2
 
@@ -201,16 +143,34 @@ class Place(_object):
             response = requests.get(geonames_url, params=defaults_search, timeout=10)
 
             if response.status_code == 200:
-                if len(response.json()) > 0:
-                    display(response.json())
+                if len(response.json()) > 0 and len(response.json()['geonames']) > 0:
+                    for loc in response.json()['geonames']:
+                        display(f"[{response.json()['geonames'].index(loc):2d}] {loc['fclName']}: {loc['toponymName']}: {loc['score']:.2f}")
 
+                    result = response.json()['geonames'][0]
+                    for key in ['alternateNames', 'bbox']:
+                        del result[key]
+
+                    names = ['toponymName', 'adminCode5' if 'adminCode5' in result else 'adminCode4', 'adminName2', 'adminName1', 'countryName']
+                    defaults['fullname'] = ", ".join([result[part] for part in names if part in result])
+
+                    defaults['latitude'] = result['lat'] if 'lat' in result else None
+                    defaults['longitude'] = result['lng'] if 'lng' in result else None
+
+                    defaults['addresstype'] = result['fclName'] if 'fclName' in result else None
+                    defaults['address'] = result
+
+                    names = sorted(set([key for key, value in result.items() if isinstance(value, str) and (key.find('Name') > 0 or key.find('Code') > 0)]))
+                    defaults['details'] = {part: result[part] for part in names}
+
+                    display(f"--> {defaults['fullname']}")
             else:
                 display(f'!! GeoNames cannot fetch data for ({defaults['name']}) [{response.status_code}]: {response.text}')
 
         except Exception as e:
             display(f"GeoNames get place - {defaults['name']}: {type(e).__name__}", error=True)
 
-        return defaults
+        super().__init__(defaults, *args, **kwargs)
 
 # --------------------------------------------------------------------------------------------------
 #

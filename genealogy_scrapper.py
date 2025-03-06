@@ -199,6 +199,19 @@ def main():
 
         if unique is False:
 
+            # UNIQUE TEST SCENARIO
+
+            searchedindividuals = [
+                'https://gw.geneanet.org/lipari?p=marie&n=mosnier',                         # date None
+                'https://gw.geneanet.org/plongeur?p=maud&n=de+ingelric',                    # place length
+                'https://gw.geneanet.org/lipari?p=desire+antonin&n=bessey',                 # place paris 15
+                'https://gw.geneanet.org/iraird?p=charles+i&n=de+heristal',                 # place length
+            ]
+
+        else:
+
+            # NO INDIVIDUALS SCENARIO
+
             searchedindividuals = [
                 'https://gw.geneanet.org/lipari?p=leon+desire+louis&n=bessey',              # lipari - Léon Désiré Louis Bessey
                 'https://gw.geneanet.org/asempey?n=jantieu&p=margueritte&oc=0',             # asempey - Marguerite Jantieu
@@ -218,14 +231,6 @@ def main():
                 # 'https://gw.geneanet.org/malugi',                                         # malugi
             ]
 
-        else:
-
-            searchedindividuals = [
-                'https://gw.geneanet.org/lipari?p=marie&n=mosnier',                         # date None
-                'https://gw.geneanet.org/plongeur?p=maud&n=de+ingelric',                    # place length
-                'https://gw.geneanet.org/lipari?p=desire+antonin&n=bessey',                 # place paris 15
-                'https://gw.geneanet.org/iraird?p=charles+i&n=de+heristal',                 # place length
-            ]
     else:
         searchedindividuals = [args.searchedindividual]
 
