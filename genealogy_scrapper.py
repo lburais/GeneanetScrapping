@@ -31,6 +31,12 @@ import subprocess
 import urllib
 from datetime import datetime
 
+# https://pypi.org/project/pandas/
+# pip3 install pandas
+import pandas as pd
+
+# https://pypi.org/project/pygedcom/
+# pip3 install pygedcom            
 import pygedcom
 
 # -------------------------------------------------------------------------
@@ -125,6 +131,22 @@ def genealogy_scrapping(individuals, ascendants=False, descendants=False, spouse
             else:
                 display(check['message'], title=f"Your {str(gedcom_file)} file is not valid")
 
+            # Save to excel
+
+            places = genealogy.places
+            df = pd.DataFrame.from_dict(places).transpose()
+            df.drop(['search','address','details'], axis=1, inplace=True)
+
+            output_file = root_folder / f"{userid}" / "places.csv"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.unlink(missing_ok=True)
+            df.to_csv(str(output_file))
+
+            # output_file = root_folder / f"{userid}" / "places.xls"
+            # output_file.parent.mkdir(parents=True, exist_ok=True)
+            # output_file.unlink(missing_ok=True)
+            # df.to_excel(str(output_file), engine='openpyxl')
+
             # Save logs
 
             display("")
@@ -197,15 +219,15 @@ def main():
 
     if args.searchedindividual is None:
 
-        if unique is False:
+        if unique is True:
 
             # UNIQUE TEST SCENARIO
 
             searchedindividuals = [
-                'https://gw.geneanet.org/lipari?p=marie&n=mosnier',                         # date None
-                'https://gw.geneanet.org/plongeur?p=maud&n=de+ingelric',                    # place length
+                'https://gw.geneanet.org/lipari?p=gabrielle+denise+josephine&n=bessey',     # image 
+                'https://gw.geneanet.org/sarahls?n=lhomme&p=marcel+marius',                 # photo
+                'https://gw.geneanet.org/asempey?p=antoine&n=cluchet&oc=1',                 # documents
                 'https://gw.geneanet.org/lipari?p=desire+antonin&n=bessey',                 # place paris 15
-                'https://gw.geneanet.org/iraird?p=charles+i&n=de+heristal',                 # place length
             ]
 
         else:
@@ -259,6 +281,12 @@ if __name__ == '__main__':
     main()
 
     display(f"Start at {start_time.strftime('%H:%M:%S')}...")
-    display(f"End at   {start_time.strftime('%H:%M:%S')}...")
+    display(f"End at   {datetime.now().strftime('%H:%M:%S')}...")
+
     duration = (datetime.now() - start_time).total_seconds()
-    display(f"In       {duration:,.2f}s\n")
+
+    hours = f"{int(duration // 3600):d}h " if (duration // 3600) > 0 else ""
+    minutes = f"{int((duration % 3600) // 60):d}mn " if ((duration % 3600) // 60) > 0 else ""
+    seconds = f"{int(duration % 60):d}s"
+
+    display(f"In       {hours}{minutes}{seconds}\n")

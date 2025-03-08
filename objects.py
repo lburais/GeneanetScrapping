@@ -34,233 +34,6 @@ from common import display
 
 # --------------------------------------------------------------------------------------------------
 #
-# _object class
-#
-# --------------------------------------------------------------------------------------------------
-
-
-class _object(dict):
-
-    def __init__(self, defaults, *args, **kwargs):
-        super().__init__(defaults, *args, **kwargs)
-
-    def __setitem__(self, key, value):
-        if key not in self.keys():
-            display(f"Object new key [{key}] with value [{value}]", error=True)
-        super().__setitem__(key, value)
-
-    def __setattr__(self, key, value):
-        self[key] = value
-
-    def __getattr__(self, key):
-        return self.get(key, None)
-
-    def __contains__(self, item):
-        return hasattr(self, item) and not getattr(self, item, None) is None
-
-# --------------------------------------------------------------------------------------------------
-#
-# Informations class
-#
-# --------------------------------------------------------------------------------------------------
-
-
-class Informations(_object):
-    """
-    Informations
-    """
-
-    def __init__(self, *args, **kwargs):
-        defaults = {
-            'url': None,
-            'author': None,
-            'nbindividuals': 0,
-            'lastchange': None,
-            'source': None
-        }
-
-        super().__init__(defaults, *args, **kwargs)
-
-# --------------------------------------------------------------------------------------------------
-#
-# Place class
-#
-# --------------------------------------------------------------------------------------------------
-
-
-class Place(_object):
-    """
-    Place
-    """
-
-    def __init__(self, where, *args, **kwargs):
-        defaults = {
-            'name': where,
-            'search': None,
-            'fullname': where,
-        }
-
-        try:
-            # GeoNames
-            # https://www.geonames.org
-            geonames_url = "http://api.geonames.org/searchJSON"
-
-            defaults_search = {
-                'username': 'lburais',  
-                # 'username': 'genealogy_scrapper',
-                'maxRows': 10, 
-                'style': 'full',
-                'lang': 'fr'        ,
-                'featureClass': 'P',   
-                'isNameRequired': True,
-
-            }
-
-            # try first structured query
-
-            # if last element is a country (ISO code exist)
-            names = defaults['name'].split(',')
-
-            # import gettext
-            # french = gettext.translation('iso3166-1', pycountry.LOCALES_DIR, languages=['fr'])
-            # french.install()
-            # country = _(names[-1].strip())
-
-            country = names[-1].strip()
-
-            code = pycountry.countries.get(name=country)
-            if code:
-                defaults_search['country'] = code.alpha_2
-
-                # first one is the city (if not a country)
-                if len(names) > 1:
-                    defaults_search['q'] = names[0].strip()
-            else:
-                defaults_search['q'] = defaults['name']
-
-            defaults['search'] = defaults_search
-
-            response = requests.get(geonames_url, params=defaults_search, timeout=10)
-
-            if response.status_code == 200:
-                if len(response.json()) > 0 and len(response.json()['geonames']) > 0:
-                    for loc in response.json()['geonames']:
-                        display(f"[{response.json()['geonames'].index(loc):2d}] {loc['fclName']}: {loc['toponymName']}: {loc['score']:.2f}")
-
-                    result = response.json()['geonames'][0]
-                    for key in ['alternateNames', 'bbox']:
-                        del result[key]
-
-                    names = ['toponymName', 'adminCode5' if 'adminCode5' in result else 'adminCode4', 'adminName2', 'adminName1', 'countryName']
-                    defaults['fullname'] = ", ".join([result[part] for part in names if part in result])
-
-                    defaults['latitude'] = result['lat'] if 'lat' in result else None
-                    defaults['longitude'] = result['lng'] if 'lng' in result else None
-
-                    defaults['addresstype'] = result['fclName'] if 'fclName' in result else None
-                    defaults['address'] = result
-
-                    names = sorted(set([key for key, value in result.items() if isinstance(value, str) and (key.find('Name') > 0 or key.find('Code') > 0)]))
-                    defaults['details'] = {part: result[part] for part in names}
-
-                    display(f"--> {defaults['fullname']}")
-            else:
-                display(f'!! GeoNames cannot fetch data for ({defaults['name']}) [{response.status_code}]: {response.text}')
-
-        except Exception as e:
-            display(f"GeoNames get place - {defaults['name']}: {type(e).__name__}", error=True)
-
-        super().__init__(defaults, *args, **kwargs)
-
-# --------------------------------------------------------------------------------------------------
-#
-# Data class
-#
-# --------------------------------------------------------------------------------------------------
-
-
-class Data(_object):
-    """
-    Data
-    """
-
-    def __init__(self, family, *args, **kwargs):
-        if family:
-            defaults = {
-                'gedcomid': None,
-                'spousesid': [],
-                'childsid': []
-            }
-            events = ['marriage', 'divorce']
-
-        else:
-            defaults = {
-                'gedcomid': None,
-                'url': None,
-                'firstname': None,
-                'lastname': None,
-                'sex': None,
-                'occupation': None,
-                'notes': [],
-                'familyid': None,
-                'parentsid': [],
-                'siblingsid': [],
-                'familiesid': []
-            }
-            events = ['birth', 'death', 'baptem', 'burial']
-
-        for event in events:
-            defaults[f"{event}"] = defaults[f"{event}date"] = defaults[f"{event}place"] = None
-
-        super().__init__(defaults, *args, **kwargs)
-
-# --------------------------------------------------------------------------------------------------
-#
-# Individual class
-#
-# --------------------------------------------------------------------------------------------------
-
-
-class Individual(_object):
-    """
-    Individual
-    """
-
-    def __init__(self, *args, **kwargs):
-        defaults = {
-            'ref': None,
-            'data': Data(family=False),
-            'parentsref': [],
-            'siblingsref': [],
-            'familiesref': [],
-            'families': [],
-        }
-
-        super().__init__(defaults, *args, **kwargs)
-
-# --------------------------------------------------------------------------------------------------
-#
-# Family class
-#
-# --------------------------------------------------------------------------------------------------
-
-
-class Family(_object):
-    """
-    Family
-    """
-
-    def __init__(self, *args, **kwargs):
-        defaults = {
-            'spousesref': [],
-            'data': Data(family=True),
-            'childsref': [],
-        }
-
-        super().__init__(defaults, *args, **kwargs)
-
-# --------------------------------------------------------------------------------------------------
-#
 # Date class
 #
 # --------------------------------------------------------------------------------------------------
@@ -366,3 +139,230 @@ class Date(str):
         except Exception as e:
             display(f"Date error ({type(e).__name__}): {' '.join(datetab)}", error=True)
             raise ValueError from e
+
+# --------------------------------------------------------------------------------------------------
+#
+# _object class
+#
+# --------------------------------------------------------------------------------------------------
+
+
+class _object(dict):
+
+    def __init__(self, defaults, *args, **kwargs):
+        super().__init__(defaults, *args, **kwargs)
+
+    def __setitem__(self, key, value):
+        if key not in self.keys():
+            display(f"Object new key [{key}] with value [{value}]", error=True)
+        super().__setitem__(key, value)
+
+    def __setattr__(self, key, value):
+        self[key] = value
+
+    def __getattr__(self, key):
+        return self.get(key, None)
+
+    def __contains__(self, item):
+        return hasattr(self, item) and not getattr(self, item, None) is None
+
+# --------------------------------------------------------------------------------------------------
+#
+# Place class
+#
+# --------------------------------------------------------------------------------------------------
+
+
+class Place(_object):
+    """
+    Place
+    """
+
+    def __init__(self, where, *args, **kwargs):
+        defaults = {
+            'name': where,
+            'search': None,
+            'fullname': where,
+        }
+
+        try:
+            # GeoNames
+            # https://www.geonames.org
+            geonames_url = "http://api.geonames.org/searchJSON"
+
+            defaults_search = {
+                'username': 'lburais',  
+                # 'username': 'genealogy_scrapper',
+                'maxRows': 10, 
+                'style': 'full',
+                'lang': 'fr'        ,
+                'featureClass': 'P',   
+                'isNameRequired': True,
+
+            }
+
+            # try first structured query
+
+            # if last element is a country (ISO code exist)
+            names = defaults['name'].split(',')
+
+            country = names[-1].strip()
+
+            code = pycountry.countries.get(name=country)
+            if code:
+                defaults_search['country'] = code.alpha_2
+
+                # first one is the city (if not a country)
+                if len(names) > 1:
+                    defaults_search['q'] = names[0].strip()
+            else:
+                defaults_search['q'] = defaults['name']
+
+            defaults['search'] = defaults_search
+
+            defaults['query'] = defaults_search['q']
+            defaults['country'] = defaults_search['country']
+
+            response = requests.get(geonames_url, params=defaults_search, timeout=10)
+
+            if response.status_code == 200:
+                defaults['nb'] = len(response.json())
+                if len(response.json()) > 0 and len(response.json()['geonames']) > 0:
+                    for loc in response.json()['geonames']:
+                        display(f"[{response.json()['geonames'].index(loc):2d}] {loc['fclName']}: {loc['toponymName']}: {loc['score']:.2f}")
+
+                    result = response.json()['geonames'][0]
+                    for key in ['alternateNames', 'bbox']:
+                        del result[key]
+
+                    names = ['toponymName', 'adminName2', 'adminName1', 'countryName']
+                    #names = ['toponymName', 'adminCode5' if 'adminCode5' in result else 'adminCode4', 'adminName2', 'adminName1', 'countryName']
+                    defaults['fullname'] = ", ".join([result[part] for part in names if part in result])
+
+                    defaults['latitude'] = result['lat'] if 'lat' in result else None
+                    defaults['longitude'] = result['lng'] if 'lng' in result else None
+
+                    defaults['addresstype'] = result['fclName'] if 'fclName' in result else None
+                    defaults['address'] = result
+
+                    names = sorted(set([key for key, value in result.items() if isinstance(value, str) and (key.find('Name') > 0 or key.find('Code') > 0)]))
+                    defaults['details'] = {part: result[part] for part in names}
+
+                    display(f"--> {defaults['fullname']}")
+            else:
+                display(f'!! GeoNames cannot fetch data for ({defaults['name']}) [{response.status_code}]: {response.text}')
+
+        except Exception as e:
+            display(f"GeoNames get place - {defaults['name']}: {type(e).__name__}", error=True)
+
+        super().__init__(defaults, *args, **kwargs)
+
+# --------------------------------------------------------------------------------------------------
+#
+# Informations class
+#
+# --------------------------------------------------------------------------------------------------
+
+
+class Informations(_object):
+    """
+    Informations
+    """
+
+    def __init__(self, *args, **kwargs):
+        defaults = {
+            'url': None,
+            'author': None,
+            'nbindividuals': 0,
+            'lastchange': None,
+            'source': None
+        }
+
+        super().__init__(defaults, *args, **kwargs)
+
+# --------------------------------------------------------------------------------------------------
+#
+# Data class
+#
+# --------------------------------------------------------------------------------------------------
+
+
+class Data(_object):
+    """
+    Data
+    """
+
+    def __init__(self, family, *args, **kwargs):
+        if family:
+            defaults = {
+                'gedcomid': None,
+                'spousesid': [],
+                'childsid': []
+            }
+            events = ['marriage', 'divorce']
+
+        else:
+            defaults = {
+                'gedcomid': None,
+                'url': None,
+                'firstname': None,
+                'lastname': None,
+                'sex': None,
+                'occupation': None,
+                'notes': [],
+                'familyid': None,
+                'parentsid': [],
+                'siblingsid': [],
+                'familiesid': []
+            }
+            events = ['birth', 'death', 'baptem', 'burial']
+
+        for event in events:
+            defaults[f"{event}"] = defaults[f"{event}date"] = defaults[f"{event}place"] = None
+
+        super().__init__(defaults, *args, **kwargs)
+
+# --------------------------------------------------------------------------------------------------
+#
+# Individual class
+#
+# --------------------------------------------------------------------------------------------------
+
+
+class Individual(_object):
+    """
+    Individual
+    """
+
+    def __init__(self, *args, **kwargs):
+        defaults = {
+            'ref': None,
+            'data': Data(family=False),
+            'parentsref': [],
+            'siblingsref': [],
+            'familiesref': [],
+            'families': [],
+        }
+
+        super().__init__(defaults, *args, **kwargs)
+
+# --------------------------------------------------------------------------------------------------
+#
+# Family class
+#
+# --------------------------------------------------------------------------------------------------
+
+
+class Family(_object):
+    """
+    Family
+    """
+
+    def __init__(self, *args, **kwargs):
+        defaults = {
+            'spousesref': [],
+            'data': Data(family=True),
+            'childsref': [],
+        }
+
+        super().__init__(defaults, *args, **kwargs)

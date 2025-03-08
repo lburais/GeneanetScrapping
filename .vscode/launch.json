@@ -29,7 +29,7 @@
             "request": "launch",
             "program": "genealogy_scrapper.py",
             "console": "integratedTerminal",
-            "args": "-l 0 -a -s -o -u"
+            "args": "-l 0 -a -s -o -u -f"
         },
         {
             "name": "Single",

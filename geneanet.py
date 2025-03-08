@@ -60,6 +60,8 @@ class Geneanet:
         self._folder = get_folder()
         self._html = None
         self._places = {}
+        self._images = []
+        self._documents = {}
 
     # -------------------------------------------------------------------------
     # _load
@@ -88,131 +90,23 @@ class Geneanet:
             else:
                 url = url + "?lang=fr"
 
-            self._html = load_chrome(url, output_file, force)
-
-            # if force is True or not output_txt.exists():
-
-            #     display(f'Load from {url}')
-
-            #     output_pdf = output_folder / (output_file + ".pdf")
-
-            #     self._html = None
-            #     headless = urllib.parse.urlparse(url).scheme == 'file'
-
-            #     try:
-            #         # Chrome setup
-
-            #         chrome_options = webdriver.ChromeOptions()
-            #         if headless:
-            #             chrome_options.add_argument("--headless")  # Headless mode to avoid opening a browser window
-            #         chrome_options.add_argument("--kiosk-printing")  # Enables silent printing
-            #         chrome_options.add_argument("--disable-gpu")  # Disables GPU acceleration (helpful in some cases)
-
-            #         # Configure Chrome print settings to save as PDF
-            #         output_pdf.parent.mkdir(parents=True, exist_ok=True)
-            #         output_pdf.unlink(missing_ok=True)
-
-            #         chrome_options.add_experimental_option("prefs", {
-            #             "printing.print_preview_sticky_settings.appState": '{"recentDestinations":[{"id":"Save as PDF","origin":"local"}],"selectedDestinationId":"Save as PDF","version":2}',
-            #             "savefile.default_directory": str(output_pdf)
-            #         })
-
-            #         service = Service()  # No need to specify path if using Selenium 4.6+
-            #         browser = webdriver.Chrome(service=service, options=chrome_options)
-
-            #         # let's go browse
-
-            #         browser.get(url)
-
-            #         if not headless:
-
-            #             # wait for button click
-
-            #             try:
-            #                 consent_button = WebDriverWait(browser, 20).until(
-            #                     EC.element_to_be_clickable((By.CSS_SELECTOR, "button#tarteaucitronPersonalize2"))
-            #                 )
-            #                 ActionChains(browser).move_to_element(consent_button).click().perform()
-            #             except TimeoutException:
-            #                 pass
-            #             except Exception as e:
-            #                 display(f"Clickable: {type(e).__name__}", error=True)
-
-            #         # Process PDF
-            #         try:
-            #             # Use Chrome DevTools Protocol (CDP) to print as PDF
-            #             pdf_settings = {
-            #                 "landscape": False,
-            #                 "paperWidth": 8.5,
-            #                 "paperHeight": 11,
-            #                 "displayHeaderFooter": True,
-            #                 "printBackground": False
-            #             }
-
-            #             # Execute CDP command to save as PDF
-            #             pdf_data = browser.execute_cdp_cmd("Page.printToPDF", pdf_settings)
-
-            #             # Save PDF to file
-            #             output_pdf.write_bytes(base64.b64decode(pdf_data["data"]))
-            #         except Exception as e:
-            #             display(f"Save PDF: {type(e).__name__}", error=True)
-            #             display(f'Failed to save PDF: {output_pdf}', error=True)
-
-            #         # Get HTML
-
-            #         self._html = browser.page_source
-
-            #     except Exception as e:
-            #         exc_type, exc_obj, exc_tb = sys.exc_info()
-            #         message = f'Exception {e} [{exc_type} - {exc_obj}] in {exc_tb.tb_frame.f_code.co_name} at {os.path.basename(exc_tb.tb_frame.f_code.co_filename)}:{exc_tb.tb_lineno}.'
-            #         display(message, error=True)
-            #         display(message, exception=True)
-
-            #     if browser:
-            #         browser.quit()
-
-            #     # Get content in perso bloc
-
-            #     soup = BeautifulSoup(self._html, 'html.parser')
-            #     self._html = soup.find("div", {"id": "perso"})
-
-            #     if not self._html:
-            #         self._html = soup.find("div", {"id": "content"})
-
-            #     # process perso
-
-            #     try:
-            #         output_txt.unlink(missing_ok=True)
-            #         output_txt.write_text(self._html.prettify())
-            #     except Exception as e:
-            #         display(f"Save HTML: {type(e).__name__}", error=True)
-            #         display(f'Failed to save HTML: {output_txt}', error=True)
-
-            # else:
-            #     display(f'Read from {output_txt}')
-            #     self._html = BeautifulSoup(output_txt.read_text(), 'html.parser')
+            html = load_chrome(url, output_file, force)
 
             # Get content in perso bloc
 
-            soup = BeautifulSoup(self._html, 'html.parser')
-            self._html = soup.find("div", {"id": "perso"})
+            soup = BeautifulSoup(html, 'html.parser')
+            html = soup.find("div", {"id": "perso"})
 
-            if not self._html:
-                self._html = soup.find("div", {"id": "content"})
-
-            # process perso
-
-            try:
-                output_file.unlink(missing_ok=True)
-                output_file.write_text(self._html.prettify())
-            except Exception as e:
-                display(f"Failed to save [{output_file}]: {type(e).__name__}", exception=True)
+            if not html:
+                html = soup.find("div", {"id": "content"})
 
         except Exception as e:
             display(f"_load: {type(e).__name__}", exception=True)
-            self._html = None
+            html = None
 
-        return self._html
+        self._html = html
+
+        return html
 
     # -------------------------------------------------------------------------
     # _read
@@ -222,13 +116,30 @@ class Geneanet:
 
         perso = self._load(url, force)
 
-        # Parse content to sections
-
         contents = []
+        images = []
+        documents = {}
 
         Section = namedtuple("Section", "name content")
 
         try:
+            # extract the images
+
+            for img in perso.find_all('img', attrs={'ng-src': True}):
+                src = img['src']  # Access the ng-src attribute
+                if src not in images:
+                    display(f"--> {src}")
+                    images += [src]
+
+            # extract the photos and documents
+
+            for media in perso.find_all('div', class_=re.compile('.*block-media.*')):
+                src = media.find('img').get('src')
+                txt = media.find('p').get_text().strip()
+                if src not in documents:
+                    display(f"--> {src}: {txt}")
+                    documents[src] = txt
+
             # extract the geneanet sections
 
             comments = perso.find_all(string=lambda text: isinstance(text, Comment))
@@ -259,13 +170,13 @@ class Geneanet:
         except Exception as e:
             display(f"_read: {type(e).__name__}", exception=True)
 
-        return contents
+        return contents, images
 
     # -------------------------------------------------------------------------
-    # _extract_date_place
+    # _scrap_date_place
     # -------------------------------------------------------------------------
 
-    def _extract_date_place(self, content, key, pattern):
+    def _scrap_date_place(self, content, key, pattern):
 
         try:
             date = place = None
@@ -400,6 +311,12 @@ class Geneanet:
     # _scrap_medias
     # -------------------------------------------------------------------------
     def _scrap_medias(self):
+
+        # process portrait images
+
+
+        # process photos and documents
+
         # process the clickable medias
 
         # medias = []
@@ -431,6 +348,7 @@ class Geneanet:
         # process the regular medias
         # image = browser.find_elements(By.CSS_SELECTOR, "img[ng-src]")
         # image = browser.find_elements(By.XPATH, "//img[@ng-src and not(@ng-click)]")
+
         pass
 
     # -------------------------------------------------------------------------
@@ -469,7 +387,7 @@ class Geneanet:
         try:
             event = ' '.join(soup.find("em").get_text().split()).rstrip(",")
             pattern = r"(?:^Mariée?)?(?P<date>[^,]*)\s*(?:\((?P<alt>.*)\))?\s*(?:,\s*(?P<place>.*?))?(?=, à|$)"
-            family.data['marriage'], family.data['marriagedate'], family.data['marriageplace'] = self._extract_date_place(event, "Marié", pattern)
+            family.data['marriage'], family.data['marriagedate'], family.data['marriageplace'] = self._scrap_date_place(event, "Marié", pattern)
         except AttributeError:
             if 'event' in locals() and event.find("Marié") >= 0:
                 display(f"!! Marriage: [{event}]", error=True)
@@ -480,7 +398,7 @@ class Geneanet:
         try:
             event = soup.get_text().lower()
             pattern = r"(?:.*)divorcée?\s*(?P<date>[^-(à]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
-            family.data['divorce'], family.data['divorcedate'], noplace = self._extract_date_place(event, "Divorcé", pattern)
+            family.data['divorce'], family.data['divorcedate'], noplace = self._scrap_date_place(event, "Divorcé", pattern)
         except AttributeError:
             if 'event' in locals() and event.find("ivorcé") >= 0:
                 display(f"!! Divorce: [{event}]", error=True)
@@ -532,7 +450,7 @@ class Geneanet:
 
             # read web page
 
-            sections = self._read(url, force)
+            sections, images = self._read(url, force)
 
             for section in sections:
 
@@ -570,7 +488,7 @@ class Geneanet:
                     try:
                         pattern = r"^Née?\s*(?P<date>[^-(à]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
                         event = ' '.join(section.content.find('li', string=lambda text: "Né" in text if text else False).get_text().split())
-                        person.data.birth, person.data.birthdate, person.data.birthplace = self._extract_date_place(event, "Né", pattern)
+                        person.data.birth, person.data.birthdate, person.data.birthplace = self._scrap_date_place(event, "Né", pattern)
                     except AttributeError:
                         if 'event' in locals() and event.find("Né") >= 0:
                             display(f"Birth: [{event}]", error=True)
@@ -581,7 +499,7 @@ class Geneanet:
                     try:
                         pattern = r"^Décédée?\s*(?P<date>[^-(à]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
                         event = ' '.join(section.content.find('li', string=lambda text: "Décédé" in text if text else False).get_text().split())
-                        person.data.death, person.data.deathdate, person.data.deathplace = self._extract_date_place(event, "Décédé", pattern)
+                        person.data.death, person.data.deathdate, person.data.deathplace = self._scrap_date_place(event, "Décédé", pattern)
                     except AttributeError:
                         if 'event' in locals() and event.find("Décédé") >= 0:
                             display(f"!! Death: [{event}]", error=True)
@@ -592,7 +510,7 @@ class Geneanet:
                     try:
                         pattern = r"(?:.*)Baptisée?\s*(?P<date>[^-(à,]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
                         event = ' '.join(section.content.find('li', string=lambda text: "baptisé" in text.lower() if text else False).get_text().split())
-                        person.data.baptem, person.data.baptemdate, person.data.baptemplace = self._extract_date_place(event, "Baptisé", pattern)
+                        person.data.baptem, person.data.baptemdate, person.data.baptemplace = self._scrap_date_place(event, "Baptisé", pattern)
                     except (AttributeError, IndexError):
                         if 'event' in locals() and event and event.find("aptisé") >= 0:
                             display(f"!! Baptem: [{event}]", error=True)
@@ -603,7 +521,7 @@ class Geneanet:
                     try:
                         pattern = r"(?:.*)Inhumée?\s*(?P<date>[^-(à,]*)\s*(?:\((?P<alt>.*)\))?\s*(?:-\s*(?P<place>.*?))?(?=, à|$)"
                         event = ' '.join(section.content.find('li', string=lambda text: "inhumé" in text.lower() if text else False).get_text().split())
-                        person.data.burial, person.data.burialdate, person.data.burialplace = self._extract_date_place(event, "Inhumé", pattern)
+                        person.data.burial, person.data.burialdate, person.data.burialplace = self._scrap_date_place(event, "Inhumé", pattern)
                     except (AttributeError, IndexError):
                         if 'event' in locals() and event and event.find("nhumé") >= 0:
                             display(f"!! Burial: [{event}]", error=True)

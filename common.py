@@ -40,6 +40,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException
 
+# https://pypi.org/project/beautifulsoup4/
+# pip3 install bs4
+from bs4 import BeautifulSoup
+
 # https://wkhtmltopdf.org
 # download and install
 # https://pypi.org/project/pdfkit/
@@ -264,9 +268,15 @@ def load_chrome(url, output_file, force=False):
         if browser:
             browser.quit()
 
+        try:
+            output_txt.unlink(missing_ok=True)
+            output_txt.write_text(BeautifulSoup(html, 'html.parser').prettify())
+        except Exception as e:
+            display(f"Failed to save [{output_txt}]: {type(e).__name__}", exception=True)
+
+
     else:
         display(f'Read from {output_txt}')
-        #html = BeautifulSoup(output_txt.read_text(), 'html.parser')
         html = output_txt.read_text()
 
     return html
