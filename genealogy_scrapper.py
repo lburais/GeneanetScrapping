@@ -36,7 +36,7 @@ from datetime import datetime
 import pandas as pd
 
 # https://pypi.org/project/pygedcom/
-# pip3 install pygedcom            
+# pip3 install pygedcom
 import pygedcom
 
 # -------------------------------------------------------------------------

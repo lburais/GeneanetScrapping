@@ -211,6 +211,7 @@ class Place(_object):
             code = pycountry.countries.get(name=country)
             if code:
                 defaults_search['country'] = code.alpha_2
+                defaults['country'] = defaults_search['country']
 
                 # first one is the city (if not a country)
                 if len(names) > 1:
@@ -221,7 +222,6 @@ class Place(_object):
             defaults['search'] = defaults_search
 
             defaults['query'] = defaults_search['q']
-            defaults['country'] = defaults_search['country']
 
             response = requests.get(geonames_url, params=defaults_search, timeout=10)
 

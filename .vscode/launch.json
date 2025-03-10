@@ -8,6 +8,13 @@
 
 
         {
+            "name": "Test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "test.py",
+            "console": "integratedTerminal"
+        },
+        {
             "name": "One",
             "type": "debugpy",
             "request": "launch",
